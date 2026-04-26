@@ -124,8 +124,8 @@ pip install -r requirements.txt
 | `requests` | 2.31.0 | Klien HTTP untuk panggilan API eksternal |
 | `urllib3` | 2.0.0 | Dependensi HTTP tingkat rendah |
 | `typing-extensions` | 4.9.0 | Back-port tipe data Python |
-| `numpy` | - | Komputasi vektor untuk _similarity search_ |
-| `beautifulsoup4` | - | Parsing HTML saat _web scraping_ |
+| `numpy` | 1.26.4 | Komputasi vektor untuk _similarity search_ |
+| `beautifulsoup4` | 4.14.3 | Parsing HTML saat _web scraping_ |
 
 ### API Eksternal
 
