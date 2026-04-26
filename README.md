@@ -20,6 +20,7 @@ ClarioAI menggunakan pola _supervisor multi-agent_ yang diorkestrasikan mengguna
 
 ### Alur Graph
 
+![Alur Graph ClarioAI](Alur%20Graph.svg)
 
 Orkestrasi bersifat iteratif; jika `approval_status` masih `rejected` dan jumlah iterasi belum mencapai `max_iterations`, pipeline akan kembali dijalankan dari Market Scout hingga seluruh laporan direvisi dan dievaluasi ulang.
 
