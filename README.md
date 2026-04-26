@@ -19,7 +19,7 @@ ClarioAI dikembangkan oleh Kelompok 11 sebagai bagian dari proyek mata kuliah Ca
 ClarioAI menggunakan pola _supervisor multi-agent_ yang diorkestrasikan menggunakan kerangka kerja **LangGraph**. Seluruh alur kerja dikontrol oleh satu agen pusat (_Lead Orchestrator_) yang mendistribusikan tugas ke empat agen spesialis secara berurutan, kemudian mengevaluasi hasil dari seluruh agen untuk menentukan apakah rencana bisnis layak diterima atau perlu direvisi.
 
 ### Alur Graph
-
+G
 ![Alur Graph ClarioAI](Graph%20Flow.svg)
 
 Orkestrasi bersifat iteratif; jika `approval_status` masih `rejected` dan jumlah iterasi belum mencapai `max_iterations`, pipeline akan kembali dijalankan dari Market Scout hingga seluruh laporan direvisi dan dievaluasi ulang.
@@ -42,7 +42,7 @@ Menyusun kerangka strategis bisnis berdasarkan laporan pasar yang telah dihasilk
 
 Melakukan pemodelan keuangan yang komprehensif berdasarkan konteks pasar dan strategi bisnis. Agen ini menghasilkan `FinancialAnalysisReport` yang mencakup estimasi biaya awal, proyeksi pendapatan, skenario risiko, analisis titik impas (_break-even_), serta simulasi alur kas untuk membantu pengambilan keputusan berbasis data finansial.
 
-**5. Ethics Guardian Agent**
+**5. Ethics Analyst Agent**
 
 Mengevaluasi seluruh rencana bisnis dari perspektif etika dan kepatuhan hukum, khususnya regulasi yang berlaku di Indonesia. Agen ini menghasilkan `EthicsAnalysisReport` yang mengidentifikasi potensi risiko hukum, persyaratan perizinan, dan rekomendasi mitigasi untuk memastikan rencana bisnis beroperasi dalam koridor yang legal dan etis.
 
