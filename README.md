@@ -19,7 +19,7 @@ ClarioAI dikembangkan oleh Kelompok 11 sebagai bagian dari proyek mata kuliah Ca
 ClarioAI menggunakan pola _supervisor multi-agent_ yang diorkestrasikan menggunakan kerangka kerja **LangGraph**. Seluruh alur kerja dikontrol oleh satu agen pusat (_Lead Orchestrator_) yang mendistribusikan tugas ke empat agen spesialis secara berurutan, kemudian mengevaluasi hasil dari seluruh agen untuk menentukan apakah rencana bisnis layak diterima atau perlu direvisi.
 
 ### Alur Graph
-G
+
 ![Alur Graph ClarioAI](Graph%20Flow.svg)
 
 Orkestrasi bersifat iteratif; jika `approval_status` masih `rejected` dan jumlah iterasi belum mencapai `max_iterations`, pipeline akan kembali dijalankan dari Market Scout hingga seluruh laporan direvisi dan dievaluasi ulang.
