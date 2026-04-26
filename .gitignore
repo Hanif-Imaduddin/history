@@ -1,0 +1,12 @@
+# Ignore environment variables (real secrets)
+
+.env
+.env.*
+
+# BUT keep template/example files
+!.env.template
+
+# Ignore Python cache
+
+**pycache**/
+*.pyc

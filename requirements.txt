@@ -1,0 +1,18 @@
+# Core LLM / agent framework
+langchain>=0.3.0
+langchain-openai>=0.2.0
+langchain-core>=0.3.0
+langgraph>=0.2.0
+
+# Database
+pymongo>=4.7.0
+
+# HTTP / web
+requests>=2.31.0
+urllib3>=2.0.0
+
+# Typing back-port
+typing-extensions>=4.9.0
+
+# Scraping
+beautifulsoup4>=4.14.3
