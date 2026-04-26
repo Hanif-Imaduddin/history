@@ -20,7 +20,7 @@ ClarioAI menggunakan pola _supervisor multi-agent_ yang diorkestrasikan mengguna
 
 ### Alur Graph
 
-![Alur Graph ClarioAI](Alur%20Graph.svg)
+![Alur Graph ClarioAI](Graph%20Flow.svg)
 
 Orkestrasi bersifat iteratif; jika `approval_status` masih `rejected` dan jumlah iterasi belum mencapai `max_iterations`, pipeline akan kembali dijalankan dari Market Scout hingga seluruh laporan direvisi dan dievaluasi ulang.
 
@@ -170,7 +170,7 @@ File `test_system.ipynb` adalah notebook Jupyter yang digunakan untuk menguji se
 | 4 | LLM Connectivity | Menguji koneksi ke DeepInfra API dan memverifikasi model Qwen dapat merespons |
 | 5 | Internet Search Tool | Menguji alat `internet_search` terhadap BrightData SERP API dengan kueri nyata |
 | 6 | MongoDB | Menguji koneksi, operasi `create_new_state`, `save_state`, dan `load_state`, termasuk serialisasi pesan |
-| 7 | Agent Nodes | Menguji setiap agen secara mandiri dengan state minimal: Market Scout, Strategic Architect, Financial Analyst, Ethics Guardian, dan Lead Orchestrator |
+| 7 | Agent Nodes | Menguji setiap agen secara mandiri dengan state minimal: Market Scout, Strategic Architect, Financial Analyst, Ethics Analyst, dan Lead Orchestrator |
 | 8 | Graph Pipeline | Menguji kompilasi graph LangGraph dan logika routing kondisional (`_route_from_orchestrator`) secara unit |
 | 9 | End-to-End | Menjalankan pipeline lengkap seluruh lima agen dengan skenario bisnis nyata (`max_iterations=1`) untuk memvalidasi integrasi sistem secara menyeluruh |
 
