@@ -8,7 +8,7 @@ ClarioAI hadir sebagai solusi berupa _Decision Support System_ berbasis _Agentic
 
 Sistem ini dibangun di atas paradigma _Tree of Thoughts_ (ToT) yang memungkinkan eksplorasi berbagai jalur perencanaan bisnis sebelum memilih solusi yang paling optimal. Setiap agen beroperasi secara otonom namun terkoordinasi melalui orkestrasi terpusat, menghasilkan laporan terstruktur yang mencakup analisis pasar, Lean Canvas, proyeksi keuangan berbasis simulasi Monte-Carlo, serta validasi etika dan regulasi. Sistem juga mendukung mekanisme _human-in-the-loop_ di mana pengguna dapat memberikan umpan balik untuk memandu iterasi analisis berikutnya.
 
-ClarioAI dikembangkan oleh Kelompok 11 sebagai bagian dari proyek kapstone dengan rentang pengembangan Maret hingga Mei 2026. Sistem ini berpotensi menjadi katalisator penting dalam ekosistem kewirausahaan Indonesia, menjembatani kesenjangan antara ketersediaan data pasar yang melimpah dengan kapasitas analitis wirausahawan yang terbatas.
+ClarioAI dikembangkan oleh Kelompok 11 sebagai bagian dari proyek mata kuliah Capstone dengan rentang pengembangan Maret hingga Mei 2026. Sistem ini berpotensi menjadi katalisator penting dalam ekosistem kewirausahaan Indonesia, menjembatani kesenjangan antara ketersediaan data pasar yang melimpah dengan kapasitas analitis wirausahawan yang terbatas.
 
 ---
 
