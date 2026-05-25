@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from functions.mongodb import BussinessConstraints, create_new_state, save_state
+from functions.mongodb import BussinessConstraints, create_new_state, get_session_detail, list_sessions, save_state
 from graphs.ebp_graph import graph
 from langgraph.types import Command
 
@@ -237,6 +237,22 @@ async def get_status():
         "state": state_info,
         "interrupt_info": interrupt_info,
     }
+
+
+@app.get("/api/sessions")
+async def get_sessions():
+    try:
+        return list_sessions(user_id="default_user")
+    except Exception as exc:
+        raise HTTPException(500, str(exc))
+
+
+@app.get("/api/sessions/{state_id}")
+async def get_session(state_id: str):
+    detail = get_session_detail(state_id)
+    if detail is None:
+        raise HTTPException(404, "Session not found.")
+    return detail
 
 
 @app.post("/api/start")

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import asdict
+from datetime import datetime, timezone
 from typing import Optional
 
 from langchain_core.messages import (
@@ -26,6 +28,9 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Suppress noisy MongoDB driver heartbeat logs
+logging.getLogger("pymongo").setLevel(logging.WARNING)
 
 MONGO_URI = os.getenv("MONGO_URI")
 DB_NAME = os.getenv("DB_NAME")
@@ -121,7 +126,11 @@ def save_state(state: EBPState) -> str:
         "user_feedback": state.get("user_feedback"),
         "final_result": state.get("final_result"),
     }
-    col.replace_one({"state_id": state["state_id"]}, doc, upsert=True)
+    col.update_one(
+        {"state_id": state["state_id"]},
+        {"$set": doc, "$setOnInsert": {"created_at": datetime.now(timezone.utc)}},
+        upsert=True,
+    )
     return state["state_id"]
 
 
@@ -148,6 +157,75 @@ def load_state(state_id: str) -> Optional[EBPState]:
         user_feedback=doc.get("user_feedback"),
         final_result=doc.get("final_result"),
     )
+
+
+def list_sessions(user_id: str = "default_user") -> list[dict]:
+    """Return summary of all sessions for a user, newest first."""
+    col = _get_collection()
+    cursor = col.find(
+        {"user_id": user_id},
+        {
+            "_id": 0,
+            "state_id": 1,
+            "bussiness_constraints": 1,
+            "approval_status": 1,
+            "final_result": 1,
+            "created_at": 1,
+            "iteration": 1,
+            "max_iterations": 1,
+        },
+    ).sort("created_at", -1).limit(50)
+    sessions = []
+    for doc in cursor:
+        bc = doc.get("bussiness_constraints") or {}
+        created = doc.get("created_at")
+        sessions.append({
+            "state_id": doc["state_id"],
+            "sector": bc.get("sector_and_domain", ""),
+            "audience": bc.get("audience", ""),
+            "prompt": bc.get("initial_prompt", ""),
+            "approval_status": doc.get("approval_status", "pending"),
+            "has_report": bool(doc.get("final_result")),
+            "created_at": created.isoformat() if isinstance(created, datetime) else None,
+            "iteration": doc.get("iteration", 0),
+            "max_iterations": doc.get("max_iterations", 3),
+        })
+    return sessions
+
+
+def get_session_detail(state_id: str) -> Optional[dict]:
+    """Return full detail of one session (including final_result)."""
+    col = _get_collection()
+    doc = col.find_one(
+        {"state_id": state_id},
+        {
+            "_id": 0,
+            "state_id": 1,
+            "bussiness_constraints": 1,
+            "approval_status": 1,
+            "final_result": 1,
+            "orchestrator_feedback": 1,
+            "created_at": 1,
+            "iteration": 1,
+            "max_iterations": 1,
+        },
+    )
+    if doc is None:
+        return None
+    bc = doc.get("bussiness_constraints") or {}
+    created = doc.get("created_at")
+    return {
+        "state_id": doc["state_id"],
+        "sector": bc.get("sector_and_domain", ""),
+        "audience": bc.get("audience", ""),
+        "prompt": bc.get("initial_prompt", ""),
+        "approval_status": doc.get("approval_status", "pending"),
+        "final_result": doc.get("final_result"),
+        "orchestrator_feedback": doc.get("orchestrator_feedback"),
+        "created_at": created.isoformat() if isinstance(created, datetime) else None,
+        "iteration": doc.get("iteration", 0),
+        "max_iterations": doc.get("max_iterations", 3),
+    }
 
 
 def create_new_state(

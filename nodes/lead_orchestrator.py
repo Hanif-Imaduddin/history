@@ -276,6 +276,7 @@ def _build_final_summary_prompt(state: EBPState) -> str:
     )
     return "\n".join(lines)
 
+FINAL_SUMMARY_MODEL="Qwen/Qwen3.5-397B-A17B"
 
 def final_summary_node(state: EBPState) -> dict[str, Any]:
     """LangGraph node that generates the final Markdown summary report for the user."""
@@ -283,7 +284,7 @@ def final_summary_node(state: EBPState) -> dict[str, Any]:
     logger.debug("=" * 60)
     logger.debug("→ Final Summary dimulai")
 
-    llm = get_llm(temperature=0.3)
+    llm = get_llm(temperature=0.3, model_name=FINAL_SUMMARY_MODEL)
     prompt = _build_final_summary_prompt(state)
 
     logger.debug("[LLM] Generating final Markdown report...")

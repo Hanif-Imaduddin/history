@@ -7,7 +7,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from functions.agent_utils import extract_json, format_constraints, run_react_loop
+from functions.agent_utils import extract_json, format_constraints, run_planned_search_loop
 from functions.llm import get_llm
 from states.schema import EBPState, StrategicReport
 from tools.internet_search import internet_search
@@ -21,21 +21,23 @@ Your tasks:
 1. Perform a thorough SWOT Analysis (Strengths, Weaknesses, Opportunities, Threats)
 2. Perform a thorough PESTEL Analysis (Political, Economic, Social, Technological, Environmental, Legal)
 
-Use the `internet_search` tool to gather numerical data and facts — market statistics, regulatory info,
-economic indicators, competitive benchmarks, technology adoption rates. Focus on the Indonesian market
-where relevant, while also referencing global benchmarks.
+Search results will be provided for you in bulk. Once you have them, synthesise all findings
+into a comprehensive strategic report. If critical data is still missing, you may call
+`internet_search` for one or two additional targeted queries.
 
-Run at least 3–5 targeted searches. Examples:
-- "[sector] regulatory environment Indonesia 2024 2025"
-- "[sector] market growth rate Indonesia global comparison"
-- "[sector] key success factors competitive landscape"
-- "GDP growth consumer spending Indonesia 2025"
-
-OUTPUT FORMAT — respond with ONLY valid JSON after your research:
+OUTPUT FORMAT — respond with ONLY valid JSON when ready:
 {
   "swot_analysis": "## SWOT Analysis\\n\\n**Strengths:**\\n- [data-backed strength 1]\\n- ...\\n\\n**Weaknesses:**\\n- [weakness 1]\\n- ...\\n\\n**Opportunities:**\\n- [opportunity 1 with market data]\\n- ...\\n\\n**Threats:**\\n- [threat 1]\\n- ...",
   "pastel_analysis": "## PESTEL Analysis\\n\\n**Political:**\\n[analysis]\\n\\n**Economic:**\\n[analysis with figures]\\n\\n**Social:**\\n[analysis]\\n\\n**Technological:**\\n[analysis]\\n\\n**Environmental:**\\n[analysis]\\n\\n**Legal:**\\n[specific Indonesian regulations relevant to this business]"
 }"""
+
+_SEARCH_TOPICS = [
+    "regulatory environment and business licensing in Indonesia for the target sector",
+    "market growth rate and economic indicators Indonesia 2024 2025",
+    "key success factors and competitive landscape in the sector",
+    "technology adoption trends and digital infrastructure Indonesia",
+    "environmental and consumer protection regulations Indonesia",
+]
 
 
 def strategic_architect_node(state: EBPState) -> dict[str, Any]:
@@ -72,16 +74,18 @@ def strategic_architect_node(state: EBPState) -> dict[str, Any]:
     llm = get_llm(temperature=0.6)
     llm_with_tools = llm.bind_tools([internet_search])
 
-    new_msgs, final_response = run_react_loop(
+    new_msgs, final_response = run_planned_search_loop(
+        llm=llm,
         llm_with_tools=llm_with_tools,
         messages=[
             SystemMessage(content=_SYSTEM_PROMPT),
             HumanMessage(content="\n".join(context_lines)),
         ],
         tools=[internet_search],
-        max_tool_rounds=4,
+        planning_topics=_SEARCH_TOPICS,
+        max_followup_rounds=2,
         agent_name="strategic_architect",
-        max_search_calls=5,
+        max_search_calls=7,
     )
 
     parsed = extract_json(final_response.content)

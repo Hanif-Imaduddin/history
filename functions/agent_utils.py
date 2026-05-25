@@ -6,6 +6,7 @@ import logging
 import re
 import threading
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -41,6 +42,35 @@ def _emit_event(event: dict) -> None:
             fn(event)
         except Exception:
             pass
+
+
+# ── Legacy tool-call parser ────────────────────────────────────────────────────
+
+_LEGACY_FUNC_RE = re.compile(
+    r"<function=(\w+)\s*(\{.*?\})\s*></function>",
+    re.DOTALL,
+)
+
+
+def _extract_legacy_tool_calls(content: str) -> list[dict]:
+    """Parse <function=name {args}></function> text into tool_calls dicts.
+
+    Some model versions emit tool calls as plain text instead of using the
+    structured tool_calls field. This recovers them so they can be executed.
+    """
+    calls = []
+    for m in _LEGACY_FUNC_RE.finditer(content):
+        try:
+            args = json.loads(m.group(2))
+        except json.JSONDecodeError:
+            continue
+        calls.append({
+            "id": f"call_{uuid.uuid4().hex[:16]}",
+            "name": m.group(1),
+            "args": args,
+            "type": "tool_call",
+        })
+    return calls
 
 
 # ── Search result parser ───────────────────────────────────────────────────────
@@ -215,6 +245,7 @@ def run_react_loop(
     max_tool_rounds: int = 4,
     agent_name: str = "agent",
     max_search_calls: int = 3,
+    _emit_agent_started: bool = True,
 ) -> tuple[list[BaseMessage], AIMessage]:
     """Execute a ReAct (Reason + Act) loop.
 
@@ -235,7 +266,8 @@ def run_react_loop(
     current = list(messages)
     final_response: AIMessage = AIMessage(content="")
 
-    _emit_event({"type": "agent_started", "agent": agent_name, "label": label})
+    if _emit_agent_started:
+        _emit_event({"type": "agent_started", "agent": agent_name, "label": label})
 
     for round_num in range(max_tool_rounds + 1):
         if _estimate_tokens(current) > _MAX_TOKENS_BEFORE_COMPACT:
@@ -253,8 +285,24 @@ def run_react_loop(
         current.append(response)
         final_response = response
 
-        if not getattr(response, "tool_calls", None):
-            break
+        effective_tool_calls = list(getattr(response, "tool_calls", None) or [])
+
+        if not effective_tool_calls:
+            # Some model versions emit tool calls as plain text rather than
+            # using the structured tool_calls field — try to recover them.
+            legacy_calls = _extract_legacy_tool_calls(response.content if isinstance(response.content, str) else "")
+            if not legacy_calls:
+                break
+            effective_tool_calls = legacy_calls
+            # Replace the malformed AIMessage with a properly-structured one
+            # so the next LLM round sees a valid tool_calls history.
+            corrected = AIMessage(content="", tool_calls=legacy_calls)
+            new_messages[-1] = corrected
+            current[-1] = corrected
+            final_response = corrected
+            logger.debug(
+                f"[LLM] Round {round_num + 1} — parsed {len(legacy_calls)} legacy tool call(s) from content"
+            )
 
         # Capture emit callback sebelum spawn worker threads
         # (_local adalah thread-local, tidak tersedia di worker threads)
@@ -262,7 +310,7 @@ def run_react_loop(
 
         search_count_ref = [search_call_count]
         search_lock = threading.Lock()
-        n_workers = len(response.tool_calls)
+        n_workers = len(effective_tool_calls)
 
         logger.debug(f"[TOOL] Menjalankan {n_workers} tool call(s) secara paralel...")
         with ThreadPoolExecutor(max_workers=n_workers) as executor:
@@ -272,7 +320,7 @@ def run_react_loop(
                     tc, tool_map, search_count_ref, search_lock,
                     max_search_calls, agent_name, label, emit_fn, logger,
                 ): tc["id"]
-                for tc in response.tool_calls
+                for tc in effective_tool_calls
             }
             results_by_id: dict[str, str] = {}
             for future in as_completed(futures):
@@ -286,11 +334,137 @@ def run_react_loop(
         search_call_count = search_count_ref[0]
 
         # Tambah ToolMessages dalam URUTAN ASLI (wajib untuk LangGraph)
-        for tc in response.tool_calls:
+        for tc in effective_tool_calls:
             result = results_by_id.get(tc["id"], "[Tool error] Result not found")
             tool_msg = ToolMessage(content=result, tool_call_id=tc["id"])
             new_messages.append(tool_msg)
             current.append(tool_msg)
+
+    return new_messages, final_response
+
+
+def run_planned_search_loop(
+    llm,
+    llm_with_tools,
+    messages: list[BaseMessage],
+    tools: list[BaseTool],
+    planning_topics: list[str],
+    max_followup_rounds: int = 2,
+    agent_name: str = "agent",
+    max_search_calls: int = 8,
+) -> tuple[list[BaseMessage], AIMessage]:
+    """Two-phase search loop optimised for models that call only one tool per round.
+
+    Phase 1 — LLM plans all queries at once (no tool calls, plain JSON output).
+    Phase 2 — All queries execute in parallel.
+    Phase 3 — LLM synthesises results; may issue follow-up searches if needed.
+    """
+    logger = logging.getLogger(f"clario.{agent_name}")
+    tool_map = {t.name: t for t in tools}
+    label = _AGENT_LABELS.get(agent_name, agent_name)
+    new_messages: list[BaseMessage] = []
+    emit_fn = getattr(_local, "emit", None)
+
+    _emit_event({"type": "agent_started", "agent": agent_name, "label": label})
+
+    # ── Phase 1: Plan all search queries ──────────────────────────────────────
+    n = len(planning_topics)
+    topics_str = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(planning_topics))
+    planning_suffix = (
+        f"\n\nPLANNING STEP: Produce exactly {n} specific search queries for these topics "
+        f"(tailor each query to the business constraints above):\n{topics_str}\n"
+        f'Respond with ONLY valid JSON: {{"queries": ["query 1", "query 2", ...]}}'
+    )
+
+    base_messages = list(messages)
+    last = base_messages[-1]
+    if isinstance(last, HumanMessage):
+        plan_messages = base_messages[:-1] + [
+            HumanMessage(content=str(last.content) + planning_suffix)
+        ]
+    else:
+        plan_messages = base_messages + [HumanMessage(content=planning_suffix)]
+
+    logger.debug(f"[PLAN] Merencanakan {n} query pencarian...")
+    t_plan = time.perf_counter()
+    plan_response: AIMessage = llm.invoke(plan_messages)
+    logger.debug(f"[PLAN] Selesai dalam {time.perf_counter() - t_plan:.2f}s")
+
+    plan_data = extract_json(
+        plan_response.content if isinstance(plan_response.content, str) else ""
+    )
+    queries: list[str] = [q for q in plan_data.get("queries", []) if isinstance(q, str) and q][:n]
+
+    if not queries:
+        for line in (plan_response.content or "").split("\n"):
+            stripped = line.strip().lstrip("0123456789.-) \"'")
+            if 10 < len(stripped) < 200:
+                queries.append(stripped)
+                if len(queries) >= n:
+                    break
+
+    if not queries:
+        queries = [f"business opportunities {agent_name.replace('_', ' ')}"]
+
+    logger.debug(f"[PLAN] {len(queries)} query: {queries}")
+
+    # ── Phase 2: Execute all searches in parallel ─────────────────────────────
+    search_count_ref = [0]
+    search_lock = threading.Lock()
+
+    tool_calls = [
+        {
+            "id": f"call_{uuid.uuid4().hex[:16]}",
+            "name": "internet_search",
+            "args": {"query": q},
+            "type": "tool_call",
+        }
+        for q in queries
+    ]
+
+    logger.debug(f"[SEARCH] Menjalankan {len(tool_calls)} pencarian paralel...")
+    t_search = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=len(tool_calls)) as executor:
+        futures = {
+            executor.submit(
+                _execute_tool_call,
+                tc, tool_map, search_count_ref, search_lock,
+                max_search_calls, agent_name, label, emit_fn, logger,
+            ): tc["id"]
+            for tc in tool_calls
+        }
+        results_by_id: dict[str, str] = {}
+        for future in as_completed(futures):
+            cid = futures[future]
+            try:
+                _, result = future.result()
+            except Exception as exc:
+                result = f"[Tool error] {exc}"
+            results_by_id[cid] = result
+    logger.debug(f"[SEARCH] Selesai dalam {time.perf_counter() - t_search:.2f}s")
+
+    search_ai_msg = AIMessage(content="", tool_calls=tool_calls)
+    tool_messages = [
+        ToolMessage(content=results_by_id[tc["id"]], tool_call_id=tc["id"])
+        for tc in tool_calls
+    ]
+    new_messages.append(search_ai_msg)
+    new_messages.extend(tool_messages)
+
+    # ── Phase 3: Synthesis with optional follow-up ────────────────────────────
+    synthesis_messages = list(messages) + new_messages
+    remaining_budget = max(0, max_search_calls - len(queries))
+
+    followup_msgs, final_response = run_react_loop(
+        llm_with_tools=llm_with_tools,
+        messages=synthesis_messages,
+        tools=tools,
+        max_tool_rounds=max_followup_rounds,
+        agent_name=agent_name,
+        max_search_calls=remaining_budget,
+        _emit_agent_started=False,
+    )
+    new_messages.extend(followup_msgs)
 
     return new_messages, final_response
 

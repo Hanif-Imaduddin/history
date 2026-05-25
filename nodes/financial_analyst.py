@@ -7,7 +7,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from functions.agent_utils import extract_json, format_constraints, run_react_loop
+from functions.agent_utils import extract_json, format_constraints, run_planned_search_loop
 from functions.llm import get_llm
 from states.schema import EBPState, FinancialAnalysisReport
 from tools.internet_search import internet_search
@@ -28,15 +28,11 @@ Your deliverables:
    with probability-weighted outcomes (simulate conceptually; use ranges)
 8. **Key Financial Metrics** — ROI, payback period, CAGR, LTV:CAC ratio
 
-Use the `internet_search` tool to gather real data:
-- Average salaries and operational costs in Indonesia for this sector
-- Market pricing benchmarks for similar products/services
-- Typical CAC and conversion rates in the sector
-- Funding landscape (seed round sizes, valuations)
+Search results will be provided for you in bulk. Once you have them, synthesise all findings
+into the financial analysis. If critical data is still missing, you may call `internet_search`
+for one or two additional targeted queries.
 
-Run at least 3–5 searches.
-
-OUTPUT FORMAT — respond with ONLY valid JSON after your research:
+OUTPUT FORMAT — respond with ONLY valid JSON when ready:
 {
   "analysis_result": "Full financial analysis in well-structured markdown, covering all 8 deliverables above with real data cited where possible."
 }"""
@@ -76,22 +72,31 @@ def financial_analyst_node(state: EBPState) -> dict[str, Any]:
         context_lines += ["\n=== ENTREPRENEUR'S FEEDBACK ===", user_fb]
 
     context_lines.append(
-        "\nSearch for cost benchmarks and pricing data, then produce the financial analysis JSON."
+        "\nReview the search results provided and produce the financial analysis JSON."
     )
+
+    _search_topics = [
+        "average salaries and operational costs in Indonesia for the target sector",
+        "market pricing benchmarks for similar products or services in Indonesia",
+        "customer acquisition cost and conversion rates in the sector",
+        "startup funding landscape seed round sizes valuations Indonesia",
+    ]
 
     llm = get_llm(temperature=0.4)
     llm_with_tools = llm.bind_tools([internet_search])
 
-    new_msgs, final_response = run_react_loop(
+    new_msgs, final_response = run_planned_search_loop(
+        llm=llm,
         llm_with_tools=llm_with_tools,
         messages=[
             SystemMessage(content=_SYSTEM_PROMPT),
             HumanMessage(content="\n".join(context_lines)),
         ],
         tools=[internet_search],
-        max_tool_rounds=4,
+        planning_topics=_search_topics,
+        max_followup_rounds=2,
         agent_name="financial_analyst",
-        max_search_calls=5,
+        max_search_calls=6,
     )
 
     parsed = extract_json(final_response.content)

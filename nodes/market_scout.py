@@ -7,7 +7,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from functions.agent_utils import extract_json, format_constraints, run_react_loop
+from functions.agent_utils import extract_json, format_constraints, run_planned_search_loop
 from functions.llm import get_llm
 from states.schema import EBPState, MarketScoutReport
 from tools.internet_search import internet_search
@@ -18,16 +18,11 @@ _SYSTEM_PROMPT = """You are the Market Scout Agent in a multi-agent AI business 
 Your mission is to perform real-time market research and identify viable business opportunities
 for the given business constraints.
 
-Use the `internet_search` tool to gather current data. Run at least 3–5 searches covering:
-1. Market size and growth trends in the target sector
-2. Key competitors and their positioning
-3. Consumer demand signals and unmet needs
-4. Emerging technologies or regulations affecting the sector
-5. Success stories or case studies of similar businesses (especially in Indonesia)
+Search results will be provided for you in bulk. Once you have them, synthesise all findings
+into a comprehensive MarketScoutReport. If critical data is still missing after reviewing the
+results, you may call `internet_search` for one or two additional targeted queries.
 
-After gathering data, produce a comprehensive MarketScoutReport.
-
-OUTPUT FORMAT — respond with ONLY valid JSON after your research, no other text:
+OUTPUT FORMAT — respond with ONLY valid JSON when ready, no other text:
 {
   "ideas": [
     "Specific business opportunity 1 with supporting evidence",
@@ -36,6 +31,14 @@ OUTPUT FORMAT — respond with ONLY valid JSON after your research, no other tex
   ],
   "agent_explanation": "Comprehensive narrative explaining the market landscape, key findings, data sources, trends, and why these opportunities are viable. Include market size estimates, growth rates, and competitive dynamics."
 }"""
+
+_SEARCH_TOPICS = [
+    "market size and growth trends in the target sector",
+    "key competitors and their positioning",
+    "consumer demand signals and unmet needs",
+    "emerging technologies or regulations affecting the sector",
+    "success stories or case studies of similar businesses in Indonesia",
+]
 
 
 def market_scout_node(state: EBPState) -> dict[str, Any]:
@@ -66,16 +69,18 @@ def market_scout_node(state: EBPState) -> dict[str, Any]:
     llm = get_llm(temperature=0.7)
     llm_with_tools = llm.bind_tools([internet_search])
 
-    new_msgs, final_response = run_react_loop(
+    new_msgs, final_response = run_planned_search_loop(
+        llm=llm,
         llm_with_tools=llm_with_tools,
         messages=[
             SystemMessage(content=_SYSTEM_PROMPT),
             HumanMessage(content=user_message),
         ],
         tools=[internet_search],
-        max_tool_rounds=4,
+        planning_topics=_SEARCH_TOPICS,
+        max_followup_rounds=2,
         agent_name="market_scout",
-        max_search_calls=5,
+        max_search_calls=7,
     )
 
     parsed = extract_json(final_response.content)

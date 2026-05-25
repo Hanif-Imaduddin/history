@@ -9,11 +9,11 @@ MODEL_NAME = os.getenv("AGENT_MODEL_NAME")
 DEEPINFRA_BASE_URL = os.getenv("DEEPINFRA_BASE_URL")
 
 
-def get_llm(temperature: float = 0.7) -> ChatOpenAI:
+def get_llm(temperature: float = 0.7,model_name=MODEL_NAME) -> ChatOpenAI:
     return ChatOpenAI(
         api_key=DEEPINFRA_API_KEY,
         base_url=DEEPINFRA_BASE_URL,
-        model=MODEL_NAME,
+        model=model_name,
         temperature=temperature,
         max_completion_tokens=8192,
     )

@@ -51,6 +51,11 @@ const reportPlaceholder = document.getElementById('report-placeholder');
 const reportContent     = document.getElementById('report-content');
 const tabReportBtn      = document.getElementById('tab-report-btn');
 
+const tabSessionsBtn    = document.getElementById('tab-sessions-btn');
+const sessionsList      = document.getElementById('sessions-list');
+const btnRefreshSessions = document.getElementById('btn-refresh-sessions');
+const btnNewSession     = document.getElementById('btn-new-session');
+
 // ── State ──────────────────────────────────────────────────────────────────
 let lastOrchestratorFeedback = '';
 let lastSynthesis = '';
@@ -234,6 +239,8 @@ function handleEvent(event) {
 
 // ── Enable / disable input form ────────────────────────────────────────────
 function enableInputs(enabled) {
+  _session_running = !enabled;
+  btnNewSession.disabled = !enabled;
   [inpSector, inpAudience, inpPrompt, inpIterations, btnStart].forEach(el => {
     el.disabled = !enabled;
   });
@@ -277,6 +284,7 @@ btnStart.addEventListener('click', async () => {
   }
 
   enableInputs(false);
+  btnNewSession.disabled = true;
   setStatus('Starting…', 'secondary');
   iterMax.textContent = inpIterations.value;
   iterCurrent.textContent = '0';
@@ -364,6 +372,120 @@ btnRevise.addEventListener('click', async () => {
   enableInputs(true);
   btnStart.click();
 });
+
+// ── New Session ────────────────────────────────────────────────────────────
+// Track running state locally to gate the New Session button
+let _session_running = false;
+
+function resetToNewSession() {
+  activityLog.innerHTML = '<p class="text-secondary small text-center mt-4">No activity yet. Start an analysis to see agent logs.</p>';
+  reportPlaceholder.classList.remove('d-none');
+  reportContent.classList.add('d-none');
+  reportContent.innerHTML = '';
+  tabReviewBtn.classList.add('disabled');
+  reviewVerdict.textContent = '';
+  reviewFeedback.value = '';
+  setStatus('Idle', 'secondary');
+  iterCounter.classList.add('d-none');
+  iterCurrent.textContent = '0';
+  showLeftPanel(inputForm);
+  enableInputs(true);
+  document.getElementById('tab-activity-btn').click();
+  document.getElementById('tab-input-btn').click();
+}
+
+btnNewSession.addEventListener('click', () => {
+  if (_session_running) return;
+  resetToNewSession();
+});
+
+// ── Sessions list ───────────────────────────────────────────────────────────
+function statusVariant(status) {
+  if (status === 'approved') return 'success';
+  if (status === 'rejected') return 'danger';
+  return 'secondary';
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
+           d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch (_) { return ''; }
+}
+
+async function loadSessions() {
+  sessionsList.innerHTML = '<p class="text-secondary small text-center mt-4">Loading…</p>';
+  try {
+    const res = await fetch('/api/sessions');
+    if (!res.ok) throw new Error('Failed to load sessions');
+    const sessions = await res.json();
+    renderSessionList(sessions);
+  } catch (e) {
+    sessionsList.innerHTML = `<p class="text-secondary small text-center mt-4">Could not load sessions.</p>`;
+  }
+}
+
+function renderSessionList(sessions) {
+  if (!sessions || sessions.length === 0) {
+    sessionsList.innerHTML = '<p class="text-secondary small text-center mt-4">No sessions found. Start your first analysis!</p>';
+    return;
+  }
+  sessionsList.innerHTML = '';
+  sessions.forEach(s => {
+    const item = document.createElement('div');
+    item.className = 'session-item';
+    item.dataset.stateId = s.state_id;
+
+    const promptPreview = escapeHtml((s.prompt || '').slice(0, 90)) + ((s.prompt || '').length > 90 ? '…' : '');
+    const dateStr = formatDate(s.created_at);
+    const reportIcon = s.has_report ? '<span class="session-has-report" title="Has final report">&#9679;</span> ' : '';
+
+    item.innerHTML = `
+      <div class="d-flex justify-content-between align-items-start mb-1">
+        <span class="session-sector">${escapeHtml(s.sector || 'No sector')}</span>
+        <span class="badge bg-${statusVariant(s.approval_status)}" style="font-size:0.65rem">${s.approval_status}</span>
+      </div>
+      <div class="session-prompt">${reportIcon}${promptPreview || '<em class="text-secondary">No description</em>'}</div>
+      <div class="session-meta">${dateStr ? dateStr + ' &middot; ' : ''}Iter ${s.iteration}/${s.max_iterations}</div>
+    `;
+    item.addEventListener('click', () => loadSessionDetail(s.state_id));
+    sessionsList.appendChild(item);
+  });
+}
+
+async function loadSessionDetail(stateId) {
+  // Highlight selected item
+  sessionsList.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
+  const clicked = sessionsList.querySelector(`[data-state-id="${stateId}"]`);
+  if (clicked) clicked.classList.add('active');
+
+  try {
+    const res = await fetch(`/api/sessions/${stateId}`);
+    if (!res.ok) throw new Error('Session not found');
+    const detail = await res.json();
+
+    if (detail.final_result) {
+      reportPlaceholder.classList.add('d-none');
+      reportContent.classList.remove('d-none');
+      reportContent.innerHTML = marked.parse(detail.final_result);
+      tabReportBtn.click();
+    } else {
+      showToast('This session has no final report yet.');
+    }
+
+    // Pre-fill input form with session constraints
+    inpSector.value = detail.sector || '';
+    inpAudience.value = detail.audience || '';
+    inpPrompt.value = detail.prompt || '';
+  } catch (e) {
+    showToast('Could not load session: ' + e.message);
+  }
+}
+
+tabSessionsBtn.addEventListener('click', loadSessions);
+btnRefreshSessions.addEventListener('click', loadSessions);
 
 // ── Restore state on page load ─────────────────────────────────────────────
 (async () => {

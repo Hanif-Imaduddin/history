@@ -7,7 +7,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from functions.agent_utils import extract_json, format_constraints, run_react_loop
+from functions.agent_utils import extract_json, format_constraints, run_planned_search_loop
 from functions.llm import get_llm
 from states.schema import EBPState, EthicsAnalysisReport
 from tools.internet_search import internet_search
@@ -29,13 +29,9 @@ Your review covers:
 6. **Intellectual Property** — trademark, patent, copyright considerations
 7. **Consumer Protection** — UU Perlindungan Konsumen No. 8/1999
 
-Use the `internet_search` tool to verify:
-- Current Indonesian regulations for the specific sector
-- Recent regulatory changes (2024–2025)
-- Compliance requirements and penalties for non-compliance
-- Ethical guidelines from relevant industry associations
-
-Run at least 3–5 searches.
+Search results will be provided for you in bulk. Once you have them, synthesise all findings
+into the compliance report. If critical data is still missing, you may call `internet_search`
+for one or two additional targeted queries.
 
 SCORING:
 - Assign an Ethics & Compliance Score from 1–10 (10 = fully compliant, no ethical concerns)
@@ -88,22 +84,31 @@ def ethics_agent_node(state: EBPState) -> dict[str, Any]:
         context_lines += ["\n=== ENTREPRENEUR'S FEEDBACK ===", user_fb]
 
     context_lines.append(
-        "\nSearch for applicable Indonesian regulations, then produce the ethics/compliance JSON report."
+        "\nReview the search results provided and produce the ethics/compliance JSON report."
     )
+
+    _search_topics = [
+        "business licensing NIB OSS requirements Indonesia for the target sector",
+        "data privacy UU PDP Kominfo digital services regulations Indonesia 2024 2025",
+        "consumer protection UU Perlindungan Konsumen sector-specific compliance Indonesia",
+        "recent regulatory changes enforcement penalties in the sector Indonesia",
+    ]
 
     llm = get_llm(temperature=0.3)
     llm_with_tools = llm.bind_tools([internet_search])
 
-    new_msgs, final_response = run_react_loop(
+    new_msgs, final_response = run_planned_search_loop(
+        llm=llm,
         llm_with_tools=llm_with_tools,
         messages=[
             SystemMessage(content=_SYSTEM_PROMPT),
             HumanMessage(content="\n".join(context_lines)),
         ],
         tools=[internet_search],
-        max_tool_rounds=4,
+        planning_topics=_search_topics,
+        max_followup_rounds=2,
         agent_name="ethics_agent",
-        max_search_calls=5,
+        max_search_calls=6,
     )
 
     parsed = extract_json(final_response.content)

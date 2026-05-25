@@ -15,6 +15,7 @@
   <div class="ms-auto d-flex align-items-center gap-3">
     <span id="status-badge" class="badge bg-secondary">Idle</span>
     <span id="iter-counter" class="text-secondary small d-none">Iteration <span id="iter-current">0</span> / <span id="iter-max">3</span></span>
+    <button id="btn-new-session" class="btn btn-sm btn-outline-secondary" style="font-size:0.8rem">New Session</button>
   </div>
 </nav>
 
@@ -127,6 +128,9 @@
         <li class="nav-item">
           <button class="nav-link" id="tab-report-btn" data-target="tab-report">Final Report</button>
         </li>
+        <li class="nav-item">
+          <button class="nav-link" id="tab-sessions-btn" data-target="tab-sessions">Sessions</button>
+        </li>
       </ul>
 
       <div class="card-body flex-grow-1 overflow-auto">
@@ -144,6 +148,17 @@
             Final report will appear here once analysis is complete.
           </div>
           <div id="report-content" class="d-none markdown-body"></div>
+        </div>
+
+        <!-- Tab: Sessions -->
+        <div id="tab-sessions" class="d-none">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <span class="small text-secondary fw-medium">Recent Sessions</span>
+            <button id="btn-refresh-sessions" class="btn btn-sm btn-outline-secondary" style="font-size:0.75rem;padding:2px 10px">Refresh</button>
+          </div>
+          <div id="sessions-list">
+            <p class="text-secondary small text-center mt-4">Loading sessions…</p>
+          </div>
         </div>
 
       </div>
