@@ -24,6 +24,9 @@ DEEPINFRA_BASE_URL = os.getenv("DEEPINFRA_BASE_URL")
 _SCRAPE_TOP_URLS = 5
 _SUMMARIZE_MODEL = "google/gemma-3-4b-it"
 _MAX_PAGE_CHARS = 12000
+_MAX_DOWNLOAD_BYTES = 1 * 1024 * 1024  # 1 MB cap untuk fetch halaman
+_BINARY_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".zip", ".gz", ".mp4", ".mp3", ".png", ".jpg", ".jpeg"}
+_BINARY_CONTENT_TYPES = ("application/pdf", "application/octet-stream", "application/zip", "application/msword", "image/", "audio/", "video/")
 
 # Tool yang digunakan oleh agent untuk melakukan pencarian di internet.
 @tool
@@ -122,6 +125,11 @@ def _parse_json_results(data: dict) -> list[dict]:
 
 def _fetch_and_summarize(url: str, query: str) -> str:
     try:
+        # Skip binary file URLs berdasarkan ekstensi sebelum membuat HTTP request
+        path = urllib.parse.urlparse(url).path.lower()
+        if any(path.endswith(ext) for ext in _BINARY_EXTENSIONS):
+            logging.debug(f"[_fetch_page_text] Skipping binary URL: {url}")
+            return ""
         text = _fetch_page_text(url)
         if not text:
             return ""
@@ -134,19 +142,43 @@ def _fetch_page_text(url: str) -> str:
     t = time.time()
     resp = requests.get(
         url,
-        timeout=15,
+        timeout=(10, 15),  # (connect timeout, read timeout per chunk)
         headers={"User-Agent": "Mozilla/5.0 (compatible; ClarioAI/1.0)"},
+        stream=True,  # ambil header dulu sebelum download body
     )
     logging.debug(f"[_fetch_page_text] HTTP GET took {time.time() - t:.2f}s, status={resp.status_code}, url={url}")
     resp.raise_for_status()
+
+    # Skip berdasarkan Content-Type header
+    content_type = resp.headers.get("Content-Type", "").lower()
+    if any(ct in content_type for ct in _BINARY_CONTENT_TYPES):
+        resp.close()
+        logging.debug(f"[_fetch_page_text] Skipping binary content-type '{content_type}': {url}")
+        return ""
+
+    # Download dengan batas ukuran 1 MB
+    chunks = []
+    total = 0
+    for chunk in resp.iter_content(chunk_size=8192):
+        total += len(chunk)
+        chunks.append(chunk)
+        if total >= _MAX_DOWNLOAD_BYTES:
+            logging.debug(f"[_fetch_page_text] Size cap hit ({total} bytes), stopping download: {url}")
+            break
+    resp.close()
+
+    # Decode eksplisit agar tidak bergantung chardet (penyebab "Unable to determine charset")
+    raw = b"".join(chunks)
+    text = raw.decode("utf-8", errors="ignore") or raw.decode("latin-1", errors="ignore")
+
     try:
         from bs4 import BeautifulSoup
-        soup = BeautifulSoup(resp.text, "html.parser")
+        soup = BeautifulSoup(text, "html.parser")
         for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
             tag.decompose()
         text = soup.get_text(separator=" ", strip=True)
     except ImportError:
-        text = re.sub(r"<[^>]+>", " ", resp.text)
+        text = re.sub(r"<[^>]+>", " ", text)
     return re.sub(r"\s+", " ", text).strip()
 
 

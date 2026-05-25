@@ -103,6 +103,7 @@ def ethics_agent_node(state: EBPState) -> dict[str, Any]:
         tools=[internet_search],
         max_tool_rounds=4,
         agent_name="ethics_agent",
+        max_search_calls=5,
     )
 
     parsed = extract_json(final_response.content)

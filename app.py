@@ -31,6 +31,9 @@ _event_q: _queue.Queue = _queue.Queue()
 _feedback_ready = threading.Event()
 _pending_feedback: Optional[str] = None
 
+_event_id_counter: int = 0
+_event_history: list[dict] = []   # replay buffer for SSE reconnects
+
 
 # ── Pydantic models ────────────────────────────────────────────────────────────
 
@@ -48,7 +51,14 @@ class FeedbackRequest(BaseModel):
 # ── Internal helpers ───────────────────────────────────────────────────────────
 
 def _emit(event: dict) -> None:
+    global _event_id_counter
+    _event_id_counter += 1
+    event["_eid"] = _event_id_counter
     _event_q.put(event)
+    if event.get("type") not in ("heartbeat", "connected"):
+        _event_history.append(event)
+        if len(_event_history) > 100:
+            _event_history.pop(0)
 
 
 _AGENT_LABELS = {
@@ -150,7 +160,9 @@ def _graph_runner(initial_state: dict, thread_config: dict) -> None:
             })
             _session["is_interrupted"] = True
 
-            _feedback_ready.wait()
+            # Wait up to 30 minutes; resume with empty feedback on timeout
+            if not _feedback_ready.wait(timeout=1800):
+                _emit({"type": "info", "message": "Feedback timeout — continuing without user input."})
             _feedback_ready.clear()
 
             user_fb = _pending_feedback or ""
@@ -196,9 +208,11 @@ async def root():
 async def get_status():
     state_id = _session["state_id"]
     state_info = None
+    interrupt_info = None
     if state_id:
+        thread_config = {"configurable": {"thread_id": state_id}}
         try:
-            snap = graph.get_state({"configurable": {"thread_id": state_id}})
+            snap = graph.get_state(thread_config)
             if snap and snap.values:
                 v = snap.values
                 state_info = {
@@ -208,12 +222,20 @@ async def get_status():
                     "max_iterations": v.get("max_iterations", 3),
                     "final_result": v.get("final_result"),
                 }
+            if _session["is_interrupted"]:
+                intr_data = _get_interrupt_data(thread_config)
+                interrupt_info = {
+                    "orchestrator_feedback": intr_data.get("orchestrator_feedback", ""),
+                    "synthesis": intr_data.get("synthesis", ""),
+                    "iteration": intr_data.get("iteration", 0),
+                }
         except Exception:
             pass
     return {
         "is_running": _session["is_running"],
         "is_interrupted": _session["is_interrupted"],
         "state": state_info,
+        "interrupt_info": interrupt_info,
     }
 
 
@@ -238,6 +260,11 @@ async def start_session(req: StartRequest):
     _session["state_id"] = state_id
     _session["is_running"] = True
     _session["is_interrupted"] = False
+    _feedback_ready.clear()
+
+    global _event_id_counter, _event_history
+    _event_id_counter = 0
+    _event_history.clear()
 
     # Drain stale events from a previous run
     while not _event_q.empty():
@@ -271,17 +298,30 @@ async def submit_feedback(req: FeedbackRequest):
 
 
 @app.get("/api/events")
-async def stream_events():
-    """SSE endpoint — streams graph events to the browser."""
+async def stream_events(last_event_id: int = 0):
+    """SSE endpoint — streams graph events to the browser.
+
+    last_event_id: the last event ID the client received (used for replay on reconnect).
+    """
     import asyncio
 
     async def generator():
         yield "data: {\"type\": \"connected\"}\n\n"
+
+        # Replay missed events when client reconnects mid-session
+        if last_event_id > 0:
+            for ev in [e for e in list(_event_history) if e.get("_eid", 0) > last_event_id]:
+                eid = ev["_eid"]
+                ev_clean = {k: v for k, v in ev.items() if k != "_eid"}
+                yield f"id: {eid}\ndata: {json.dumps(ev_clean, ensure_ascii=False)}\n\n"
+
         loop = asyncio.get_event_loop()
         while True:
             try:
                 event = await loop.run_in_executor(None, _event_q.get, True, 25.0)
-                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                eid = event.get("_eid", 0)
+                ev_clean = {k: v for k, v in event.items() if k != "_eid"}
+                yield f"id: {eid}\ndata: {json.dumps(ev_clean, ensure_ascii=False)}\n\n"
             except _queue.Empty:
                 yield "data: {\"type\": \"heartbeat\"}\n\n"
 

@@ -54,6 +54,8 @@ const tabReportBtn      = document.getElementById('tab-report-btn');
 // ── State ──────────────────────────────────────────────────────────────────
 let lastOrchestratorFeedback = '';
 let lastSynthesis = '';
+let lastEventId = 0;
+const receivedEventIds = new Set();
 
 // ── Utility ────────────────────────────────────────────────────────────────
 function setStatus(label, variant) {
@@ -153,6 +155,8 @@ function handleEvent(event) {
     case 'session_started':
       setStatus('Running', 'primary');
       activityLog.innerHTML = '';
+      receivedEventIds.clear();
+      lastEventId = 0;
       showLeftPanel(runningIndicator);
       iterCounter.classList.remove('d-none');
       break;
@@ -168,14 +172,24 @@ function handleEvent(event) {
       break;
 
     case 'orchestrator_evaluation': {
-      const isApproved = event.status === 'approved';
+      let badgeVariant, statusClass, statusLabel, statusText;
+      if (event.status === 'approved') {
+        badgeVariant = 'success'; statusClass = 'entry-status-approved'; statusLabel = 'approved';
+        statusText = `Decision: APPROVED  (iteration ${event.iteration})`;
+      } else if (event.status === 'pending') {
+        badgeVariant = 'secondary'; statusClass = 'entry-status-pending'; statusLabel = 'routing';
+        statusText = `Routing to agents… (iteration ${event.iteration})`;
+      } else {
+        badgeVariant = 'danger'; statusClass = 'entry-status-rejected'; statusLabel = 'rejected';
+        statusText = `Decision: REJECTED  (iteration ${event.iteration})`;
+      }
       addLogEntry({
         label:       event.label || 'Lead Orchestrator',
         agentKey:    'lead_orchestrator',
-        statusText:  `Decision: ${event.status.toUpperCase()}  (iteration ${event.iteration})`,
-        statusClass: isApproved ? 'entry-status-approved' : 'entry-status-rejected',
+        statusText,
+        statusClass,
         messages:    event.feedback ? [event.feedback] : [],
-        badge:       { text: event.status, variant: isApproved ? 'success' : 'danger' },
+        badge:       { text: statusLabel, variant: badgeVariant },
       });
       iterCurrent.textContent = event.iteration;
       lastOrchestratorFeedback = event.feedback || '';
@@ -230,9 +244,19 @@ let evtSource = null;
 
 function connectSSE() {
   if (evtSource) { evtSource.close(); }
-  evtSource = new EventSource('/api/events');
+  const url = lastEventId > 0 ? `/api/events?last_event_id=${lastEventId}` : '/api/events';
+  evtSource = new EventSource(url);
   evtSource.onmessage = (e) => {
-    try { handleEvent(JSON.parse(e.data)); } catch (_) {}
+    try {
+      const event = JSON.parse(e.data);
+      const eid = e.lastEventId ? parseInt(e.lastEventId, 10) : null;
+      if (eid) {
+        if (receivedEventIds.has(eid)) return;
+        receivedEventIds.add(eid);
+        lastEventId = eid;
+      }
+      handleEvent(event);
+    } catch (_) {}
   };
   evtSource.onerror = () => {
     setTimeout(connectSSE, 3000);
@@ -273,6 +297,8 @@ btnStart.addEventListener('click', async () => {
       showToast(err.detail || 'Failed to start session.');
       enableInputs(true);
       setStatus('Idle', 'secondary');
+    } else {
+      setStatus('Running', 'primary');
     }
   } catch (e) {
     showToast('Network error: ' + e.message);
@@ -356,6 +382,17 @@ btnRevise.addEventListener('click', async () => {
       }
     } else if (data.is_interrupted) {
       setStatus('Awaiting Feedback', 'warning');
+      enableInputs(false);
+      iterCounter.classList.remove('d-none');
+      if (data.state) {
+        iterCurrent.textContent = data.state.iteration || 0;
+        iterMax.textContent = data.state.max_iterations || 3;
+      }
+      const intr = data.interrupt_info || {};
+      feedbackAssessment.textContent = intr.orchestrator_feedback || '(No specific feedback provided)';
+      feedbackText.value = '';
+      showLeftPanel(feedbackPanel);
+      document.getElementById('tab-input-btn').click();
     } else if (data.state && data.state.final_result) {
       renderFinalReport(data.state.final_result);
       setStatus('Complete', 'success');

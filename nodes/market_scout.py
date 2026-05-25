@@ -75,6 +75,7 @@ def market_scout_node(state: EBPState) -> dict[str, Any]:
         tools=[internet_search],
         max_tool_rounds=4,
         agent_name="market_scout",
+        max_search_calls=5,
     )
 
     parsed = extract_json(final_response.content)
