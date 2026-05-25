@@ -15,4 +15,16 @@ def get_llm(temperature: float = 0.7) -> ChatOpenAI:
         base_url=DEEPINFRA_BASE_URL,
         model=MODEL_NAME,
         temperature=temperature,
+        max_completion_tokens=8192,
+    )
+
+
+def get_compact_llm() -> ChatOpenAI:
+    """LLM ringan untuk meringkas messages saat context terlalu besar."""
+    return ChatOpenAI(
+        api_key=DEEPINFRA_API_KEY,
+        base_url=DEEPINFRA_BASE_URL,
+        model="meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        temperature=0.1,
+        max_completion_tokens=4096,
     )

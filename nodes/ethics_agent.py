@@ -1,6 +1,8 @@
 """Ethics Agent - Mengevaluasi kepatuhan terhadap peraturan hukum dan validasi etika."""
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -9,6 +11,8 @@ from functions.agent_utils import extract_json, format_constraints, run_react_lo
 from functions.llm import get_llm
 from states.schema import EBPState, EthicsAnalysisReport
 from tools.internet_search import internet_search
+
+logger = logging.getLogger("clario.ethics_agent")
 
 _SYSTEM_PROMPT = """You are the Ethics Guardian Agent in a multi-agent AI business planning system.
 You ensure that every business plan is legally compliant and ethically sound, especially under
@@ -45,6 +49,9 @@ OUTPUT FORMAT — respond with ONLY valid JSON after your research:
 
 def ethics_agent_node(state: EBPState) -> dict[str, Any]:
     """LangGraph node for the Ethics Guardian Agent."""
+    t_start = time.perf_counter()
+    logger.debug("=" * 60)
+    logger.debug("→ Ethics Guardian Agent dimulai")
     bc = state.get("bussiness_constraints")
     msr = state.get("market_scout_report")
     sr = state.get("strategic_report")
@@ -94,7 +101,8 @@ def ethics_agent_node(state: EBPState) -> dict[str, Any]:
             HumanMessage(content="\n".join(context_lines)),
         ],
         tools=[internet_search],
-        max_tool_rounds=6,
+        max_tool_rounds=4,
+        agent_name="ethics_agent",
     )
 
     parsed = extract_json(final_response.content)
@@ -102,6 +110,8 @@ def ethics_agent_node(state: EBPState) -> dict[str, Any]:
 
     report = EthicsAnalysisReport(analysis_result=analysis)
 
+    logger.debug(f"✓ Ethics Guardian Agent selesai dalam {time.perf_counter() - t_start:.2f}s")
+    logger.debug("=" * 60)
     return {
         "ethics_analysis_report": report,
         "messages": new_msgs,

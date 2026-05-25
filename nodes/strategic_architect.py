@@ -1,6 +1,8 @@
 """Strategic Architect Agent - Analisis SWOT dan PASTEL"""
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -9,6 +11,8 @@ from functions.agent_utils import extract_json, format_constraints, run_react_lo
 from functions.llm import get_llm
 from states.schema import EBPState, StrategicReport
 from tools.internet_search import internet_search
+
+logger = logging.getLogger("clario.strategic_architect")
 
 _SYSTEM_PROMPT = """You are the Strategic Architect Agent in a multi-agent AI business planning system.
 You create data-backed strategic analyses for new business ventures.
@@ -36,6 +40,9 @@ OUTPUT FORMAT — respond with ONLY valid JSON after your research:
 
 def strategic_architect_node(state: EBPState) -> dict[str, Any]:
     """LangGraph node for the Strategic Architect Agent."""
+    t_start = time.perf_counter()
+    logger.debug("=" * 60)
+    logger.debug("→ Strategic Architect Agent dimulai")
     bc = state.get("bussiness_constraints")
     msr = state.get("market_scout_report")
     feedback = state.get("orchestrator_feedback")
@@ -72,7 +79,8 @@ def strategic_architect_node(state: EBPState) -> dict[str, Any]:
             HumanMessage(content="\n".join(context_lines)),
         ],
         tools=[internet_search],
-        max_tool_rounds=6,
+        max_tool_rounds=4,
+        agent_name="strategic_architect",
     )
 
     parsed = extract_json(final_response.content)
@@ -84,6 +92,8 @@ def strategic_architect_node(state: EBPState) -> dict[str, Any]:
 
     report = StrategicReport(swot_analysis=swot, pastel_analysis=pestel)
 
+    logger.debug(f"✓ Strategic Architect Agent selesai dalam {time.perf_counter() - t_start:.2f}s")
+    logger.debug("=" * 60)
     return {
         "strategic_report": report,
         "messages": new_msgs,

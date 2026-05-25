@@ -1,3 +1,9 @@
+# Web UI
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+python-dotenv>=1.0.0
+
 # Core LLM / agent framework
 langchain>=0.3.0
 langchain-openai>=0.2.0

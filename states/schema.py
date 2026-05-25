@@ -57,3 +57,4 @@ class EBPState(TypedDict):
     iteration: int
     max_iterations: int
     user_feedback: Optional[str]
+    final_result: Optional[str]

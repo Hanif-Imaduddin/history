@@ -1,6 +1,8 @@
 """Financial Analyst Agent — projections, risk assessment, dan Monte Carlo summary."""
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -9,6 +11,8 @@ from functions.agent_utils import extract_json, format_constraints, run_react_lo
 from functions.llm import get_llm
 from states.schema import EBPState, FinancialAnalysisReport
 from tools.internet_search import internet_search
+
+logger = logging.getLogger("clario.financial_analyst")
 
 _SYSTEM_PROMPT = """You are the Financial Analyst Agent in a multi-agent AI business planning system.
 You produce rigorous financial analyses for early-stage business ventures.
@@ -40,6 +44,9 @@ OUTPUT FORMAT — respond with ONLY valid JSON after your research:
 
 def financial_analyst_node(state: EBPState) -> dict[str, Any]:
     """LangGraph node for the Financial Analyst Agent."""
+    t_start = time.perf_counter()
+    logger.debug("=" * 60)
+    logger.debug("→ Financial Analyst Agent dimulai")
     bc = state.get("bussiness_constraints")
     sr = state.get("strategic_report")
     msr = state.get("market_scout_report")
@@ -82,7 +89,8 @@ def financial_analyst_node(state: EBPState) -> dict[str, Any]:
             HumanMessage(content="\n".join(context_lines)),
         ],
         tools=[internet_search],
-        max_tool_rounds=6,
+        max_tool_rounds=4,
+        agent_name="financial_analyst",
     )
 
     parsed = extract_json(final_response.content)
@@ -90,6 +98,8 @@ def financial_analyst_node(state: EBPState) -> dict[str, Any]:
 
     report = FinancialAnalysisReport(analysis_result=analysis)
 
+    logger.debug(f"✓ Financial Analyst Agent selesai dalam {time.perf_counter() - t_start:.2f}s")
+    logger.debug("=" * 60)
     return {
         "financial_analysis_report": report,
         "messages": new_msgs,

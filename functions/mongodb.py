@@ -119,6 +119,7 @@ def save_state(state: EBPState) -> str:
         "iteration": state.get("iteration", 0),
         "max_iterations": state.get("max_iterations", 3),
         "user_feedback": state.get("user_feedback"),
+        "final_result": state.get("final_result"),
     }
     col.replace_one({"state_id": state["state_id"]}, doc, upsert=True)
     return state["state_id"]
@@ -145,6 +146,7 @@ def load_state(state_id: str) -> Optional[EBPState]:
         iteration=doc.get("iteration", 0),
         max_iterations=doc.get("max_iterations", 3),
         user_feedback=doc.get("user_feedback"),
+        final_result=doc.get("final_result"),
     )
 
 
@@ -168,4 +170,5 @@ def create_new_state(
         iteration=0,
         max_iterations=max_iterations,
         user_feedback=None,
+        final_result=None,
     )

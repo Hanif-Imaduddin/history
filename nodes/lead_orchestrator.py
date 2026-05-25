@@ -1,17 +1,57 @@
 """Lead Orchestrator node - menggunakan mekanisme Tree of Thoughts reasoning
-untuk mengevaluasi semua agent reports dan menentukan apakah plan bisnis tersebut memenuhi kriteria persetujuan 
+untuk mengevaluasi semua agent reports dan menentukan apakah plan bisnis tersebut memenuhi kriteria persetujuan
 atau perlu dikembangkan lebih lanjut.
 """
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import asdict
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.types import interrupt
 
 from functions.agent_utils import extract_json, format_constraints
 from functions.llm import get_llm
 from states.schema import EBPState
+
+logger = logging.getLogger("clario.lead_orchestrator")
+
+_FINAL_SUMMARY_SYSTEM_PROMPT = """You are the Lead Orchestrator of a multi-agent AI business planning system.
+Your task is to produce a comprehensive, well-structured final report for the entrepreneur.
+The report must be written entirely in **Markdown** and cover all four specialist analyses.
+
+Structure your report exactly as follows:
+
+# Business Plan Analysis Report
+
+## Executive Summary
+(2–3 paragraph overview of the business idea and overall recommendation)
+
+## 1. Market Analysis
+(Summarize opportunities, target segments, and competitive landscape from the Market Scout report)
+
+## 2. Strategic Analysis
+### SWOT
+(Strengths, Weaknesses, Opportunities, Threats)
+### PESTEL
+(Political, Economic, Social, Technological, Environmental, Legal factors)
+
+## 3. Financial Analysis
+(Key projections, risk assessment, and viability summary from the Financial Analyst report)
+
+## 4. Ethics & Compliance
+(Regulatory compliance status, ethical concerns, and mitigations from the Ethics Guardian report)
+
+## 5. Recommendations & Action Plan
+(Concrete, prioritized next steps the entrepreneur should take — minimum 5 items)
+
+## Overall Verdict
+(A clear APPROVED / CONDITIONAL APPROVAL / REJECTED verdict with a one-paragraph justification)
+
+Write in a professional yet accessible tone. Use bullet points, tables, or bold text where helpful.
+Respond with ONLY the Markdown report, no other text or code fences."""
 
 _SYSTEM_PROMPT = """You are the Lead Orchestrator of a multi-agent AI business planning system.
 Your role is to evaluate the quality of the business plan produced by four specialist agents
@@ -101,6 +141,9 @@ def _build_evaluation_prompt(state: EBPState) -> str:
 
 def lead_orchestrator_node(state: EBPState) -> dict[str, Any]:
     """LangGraph node for the Lead Orchestrator."""
+    t_start = time.perf_counter()
+    logger.debug("=" * 60)
+    logger.debug("→ Lead Orchestrator dimulai")
     msr = state.get("market_scout_report")
     sr = state.get("strategic_report")
     far = state.get("financial_analysis_report")
@@ -108,6 +151,9 @@ def lead_orchestrator_node(state: EBPState) -> dict[str, Any]:
 
     # First pass — no reports exist yet, just route forward
     if msr is None and sr is None and far is None and ear is None:
+        logger.debug("  First pass — belum ada report, routing ke Market Scout")
+        logger.debug(f"✓ Lead Orchestrator selesai dalam {time.perf_counter() - t_start:.2f}s")
+        logger.debug("=" * 60)
         return {
             "approval_status": "pending",
             "orchestrator_feedback": None,
@@ -119,10 +165,14 @@ def lead_orchestrator_node(state: EBPState) -> dict[str, Any]:
     llm = get_llm(temperature=0.4)
     prompt = _build_evaluation_prompt(state)
 
+    iteration = state.get("iteration", 0)
+    logger.debug(f"[LLM] Evaluasi iterasi {iteration} — memanggil LLM (Tree of Thoughts)...")
+    t_llm = time.perf_counter()
     response = llm.invoke([
         SystemMessage(content=_SYSTEM_PROMPT),
         HumanMessage(content=prompt),
     ])
+    logger.debug(f"[LLM] Evaluasi selesai dalam {time.perf_counter() - t_llm:.2f}s")
 
     parsed = extract_json(response.content)
 
@@ -134,12 +184,15 @@ def lead_orchestrator_node(state: EBPState) -> dict[str, Any]:
     synthesis = parsed.get("synthesis", "")
 
     # Force reject on last iteration so we don't approve garbage
-    iteration = state.get("iteration", 0)
     max_iter = state.get("max_iterations", 3)
     if iteration >= max_iter and approval_status == "rejected":
         # We've hit the limit — surface what we have
         approval_status = "approved"
         feedback = "Max iterations reached — delivering best available plan."
+
+    logger.debug(f"  Keputusan: {approval_status.upper()} (iterasi {iteration + 1}/{max_iter})")
+    if feedback:
+        logger.debug(f"  Feedback: {feedback[:120]}{'...' if len(feedback) > 120 else ''}")
 
     summary_msg = (
         f"[Lead Orchestrator — Iteration {iteration + 1}]\n"
@@ -148,9 +201,104 @@ def lead_orchestrator_node(state: EBPState) -> dict[str, Any]:
         f"Feedback: {feedback}"
     )
 
+    logger.debug(f"✓ Lead Orchestrator selesai dalam {time.perf_counter() - t_start:.2f}s")
+    logger.debug("=" * 60)
+
+    # Pause and ask user for feedback before the next pipeline iteration
+    if approval_status == "rejected" and (iteration + 1) < max_iter:
+        user_fb = interrupt({
+            "orchestrator_feedback": feedback,
+            "synthesis": synthesis,
+            "iteration": iteration + 1,
+        })
+        return {
+            "approval_status": approval_status,
+            "orchestrator_feedback": feedback,
+            "iteration": iteration + 1,
+            "user_feedback": user_fb if isinstance(user_fb, str) else None,
+            "messages": [SystemMessage(content=summary_msg)],
+        }
+
     return {
         "approval_status": approval_status,
         "orchestrator_feedback": feedback,
         "iteration": iteration + 1,
         "messages": [SystemMessage(content=summary_msg)],
+    }
+
+
+def _build_final_summary_prompt(state: EBPState) -> str:
+    bc = state.get("bussiness_constraints")
+    msr = state.get("market_scout_report")
+    sr = state.get("strategic_report")
+    far = state.get("financial_analysis_report")
+    ear = state.get("ethics_analysis_report")
+    synthesis = ""
+    for msg in reversed(state.get("messages", [])):
+        if hasattr(msg, "content") and "Synthesis:" in msg.content:
+            for line in msg.content.splitlines():
+                if line.startswith("Synthesis:"):
+                    synthesis = line.removeprefix("Synthesis:").strip()
+            break
+
+    lines = [
+        "=== BUSINESS CONSTRAINTS ===",
+        format_constraints(bc),
+    ]
+
+    if synthesis:
+        lines += ["\n=== ORCHESTRATOR SYNTHESIS ===", synthesis]
+
+    lines.append("\n=== AGENT REPORTS ===")
+
+    if msr:
+        lines += [
+            "\n--- Market Scout Report ---",
+            f"Ideas: {', '.join(msr.ideas)}",
+            f"Explanation: {msr.agent_explanation}",
+        ]
+
+    if sr:
+        lines += [
+            "\n--- Strategic Report ---",
+            f"SWOT: {sr.swot_analysis}",
+            f"PESTEL: {sr.pastel_analysis}",
+        ]
+
+    if far:
+        lines += ["\n--- Financial Analysis ---", far.analysis_result]
+
+    if ear:
+        lines += ["\n--- Ethics Analysis ---", ear.analysis_result]
+
+    lines.append(
+        "\nUsing all the information above, produce the final Markdown report as instructed."
+    )
+    return "\n".join(lines)
+
+
+def final_summary_node(state: EBPState) -> dict[str, Any]:
+    """LangGraph node that generates the final Markdown summary report for the user."""
+    t_start = time.perf_counter()
+    logger.debug("=" * 60)
+    logger.debug("→ Final Summary dimulai")
+
+    llm = get_llm(temperature=0.3)
+    prompt = _build_final_summary_prompt(state)
+
+    logger.debug("[LLM] Generating final Markdown report...")
+    t_llm = time.perf_counter()
+    response = llm.invoke([
+        SystemMessage(content=_FINAL_SUMMARY_SYSTEM_PROMPT),
+        HumanMessage(content=prompt),
+    ])
+    logger.debug(f"[LLM] Final report selesai dalam {time.perf_counter() - t_llm:.2f}s")
+
+    final_md = response.content.strip()
+
+    logger.debug(f"✓ Final Summary selesai dalam {time.perf_counter() - t_start:.2f}s")
+    logger.debug("=" * 60)
+    return {
+        "final_result": final_md,
+        "messages": [SystemMessage(content=f"[Final Report Generated]\n\n{final_md}")],
     }
