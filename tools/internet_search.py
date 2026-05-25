@@ -5,7 +5,6 @@ import time
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import numpy as np
 import requests
 from langchain_core.tools import tool
 import os
@@ -21,20 +20,14 @@ BRIGHTDATA_ZONE = os.getenv("BRIGHTDATA_ZONE")
 
 DEEPINFRA_API_KEY = os.getenv("DEEPINFRA_API_KEY")
 DEEPINFRA_BASE_URL = os.getenv("DEEPINFRA_BASE_URL")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL")
 
-_CHUNK_WORDS = 150
-_CHUNK_OVERLAP = 20
-_MAX_CHUNKS = 50
 _SCRAPE_TOP_URLS = 5
-_SCRAPE_TOP_K = 3
+_SUMMARIZE_MODEL = "google/gemma-3-4b-it"
+_MAX_PAGE_CHARS = 12000
 
-# Tool yang digunakan oleh agent untuk melakukan pencarian di internet. Tool ini dipanggil di banyak agent (nggak cuman di market scout doang)
-# Di tool ini sudah embed helper untuk scraping tiap website yang didapat dari searching, jadi LLM cukup panggil tool ini sekali aja untuk pencarian.
+# Tool yang digunakan oleh agent untuk melakukan pencarian di internet.
 @tool
 def internet_search(query: str):
-
-    # Deskripsi tool yang baka dibaca oleh agent.
     """Search the internet for real-time business and market information.
     Use this for market trends, competitor landscape, regulatory info, pricing data,
     and any other facts needed for business planning.
@@ -49,7 +42,6 @@ def internet_search(query: str):
     try:
         logging.debug(f"[internet_search] START query='{query}'")
 
-        # Menggunakan BrightData untuk melakukan pencarian Google dengan query yang diberikan. Hasilnya akan dalam format JSON.
         t_search = time.time()
         response = requests.post(
             "https://api.brightdata.com/request",
@@ -66,12 +58,10 @@ def internet_search(query: str):
         )
         logging.debug(f"[internet_search] BrightData search took {time.time() - t_search:.2f}s, status={response.status_code}")
 
-        # Kalau status code bukan 200, berarti ada error saat request ke BrightData, jadi kita return pesan error dengan status code dan query yang dicari.
         if response.status_code != 200:
             return f"[Search] HTTP {response.status_code} for query: '{query}'"
 
         try:
-            # Parsing hasil pencarian dari response JSON, yang diambil cuman bagian 'organic' (hasil pencarian organik) nya saja
             search_results = _parse_json_results(response.json())
         except Exception:
             return _strip_html(query, response.text)
@@ -89,47 +79,23 @@ def internet_search(query: str):
 
         urls_to_scrape = [r["link"] for r in search_results[:_SCRAPE_TOP_URLS] if r["link"]]
         if urls_to_scrape:
-            # Step 1: Fetch + chunk semua URL secara paralel
-            t_fetch = time.time()
-            url_chunks: dict[str, list[str]] = {}
+            t_summarize = time.time()
+            summaries: dict[str, str] = {}
             with ThreadPoolExecutor(max_workers=len(urls_to_scrape)) as executor:
-                fetch_futures = {executor.submit(_fetch_and_chunk, url): url for url in urls_to_scrape}
-                for future in as_completed(fetch_futures):
-                    url = fetch_futures[future]
+                futures = {executor.submit(_fetch_and_summarize, url, query): url for url in urls_to_scrape}
+                for future in as_completed(futures):
+                    url = futures[future]
                     try:
-                        url_chunks[url] = future.result()
+                        summaries[url] = future.result()
                     except Exception:
-                        url_chunks[url] = []
-            logging.debug(f"[internet_search] Parallel fetch+chunk took {time.time() - t_fetch:.2f}s")
+                        summaries[url] = ""
+            logging.debug(f"[internet_search] Parallel fetch+summarize took {time.time() - t_summarize:.2f}s")
 
-            # Step 2: Kumpulkan semua chunks dari semua URL, lalu panggil _get_embeddings sekali saja
-            urls_with_chunks = [(url, url_chunks[url]) for url in urls_to_scrape if url_chunks.get(url)]
-            if urls_with_chunks:
-                all_chunk_texts: list[str] = []
-                url_chunk_ranges: dict[str, tuple[int, int]] = {}
-                for url, chunks in urls_with_chunks:
-                    start = len(all_chunk_texts)
-                    all_chunk_texts.extend(chunks)
-                    url_chunk_ranges[url] = (start, len(all_chunk_texts))
-
-                t_embed = time.time()
-                all_embeddings = _get_embeddings([query] + all_chunk_texts)
-                logging.debug(f"[internet_search] Batch embed ({len(all_chunk_texts)} chunks) took {time.time() - t_embed:.2f}s")
-
-                query_emb = np.array(all_embeddings[0])
-                all_chunk_embs = np.array(all_embeddings[1:])
-
-                # Step 3: Ranking per URL menggunakan embedding yang sudah di-batch
-                parts.append("\n\n-- Page Content --")
-                for url in urls_to_scrape:
-                    if url not in url_chunk_ranges:
-                        continue
-                    start, end = url_chunk_ranges[url]
-                    chunks = url_chunks[url]
-                    chunk_embs = all_chunk_embs[start:end]
-                    scraped = _rank_and_format(url, chunks, query_emb, chunk_embs, _SCRAPE_TOP_K)
-                    if scraped:
-                        parts.append(f"\n{scraped}")
+            parts.append("\n\n-- Page Summaries --")
+            for url in urls_to_scrape:
+                summary = summaries.get(url, "")
+                if summary:
+                    parts.append(f"\n[{url}]\n{summary}")
 
         logging.debug(f"[internet_search] TOTAL took {time.time() - t0:.2f}s")
         return "\n".join(parts)
@@ -142,7 +108,6 @@ def internet_search(query: str):
 # Fungsi Helpers
 
 
-# Fungsi untuk mengambil hasil 'organic' dari response JSON
 def _parse_json_results(data: dict) -> list[dict]:
     json_body = json.loads(data["body"])
     results = []
@@ -155,33 +120,14 @@ def _parse_json_results(data: dict) -> list[dict]:
     return results
 
 
-def _fetch_and_chunk(url: str) -> list[str]:
+def _fetch_and_summarize(url: str, query: str) -> str:
     try:
         text = _fetch_page_text(url)
         if not text:
-            return []
-        chunks = _chunk_text(text)
-        return chunks[:_MAX_CHUNKS] if chunks else []
+            return ""
+        return _summarize_page(text, query)
     except Exception:
-        return []
-
-
-def _rank_and_format(url: str, chunks: list[str], query_emb: np.ndarray, chunk_embs: np.ndarray, top_k: int) -> str:
-    q = query_emb / (np.linalg.norm(query_emb) + 1e-9)
-    c = chunk_embs / (np.linalg.norm(chunk_embs, axis=1, keepdims=True) + 1e-9)
-    scores = c @ q
-
-    top_indices = np.argsort(scores)[-top_k:]
-
-    expanded = set()
-    for idx in top_indices:
-        for neighbor in (idx - 1, idx, idx + 1):
-            if 0 <= neighbor < len(chunks):
-                expanded.add(int(neighbor))
-
-    selected_chunks = [chunks[i] for i in sorted(expanded)]
-    body = "\n---\n".join(selected_chunks)
-    return f"[{url}]\n{body}"
+        return ""
 
 
 def _fetch_page_text(url: str) -> str:
@@ -204,32 +150,31 @@ def _fetch_page_text(url: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def _chunk_text(text: str) -> list[str]:
-    words = text.split()
-    chunks, step = [], _CHUNK_WORDS - _CHUNK_OVERLAP
-    for i in range(0, len(words), step):
-        chunk = " ".join(words[i : i + _CHUNK_WORDS])
-        if chunk:
-            chunks.append(chunk)
-    return chunks
-
-
-def _get_embeddings(texts: list[str]) -> list[list[float]]:
+def _summarize_page(text: str, query: str) -> str:
     t = time.time()
-    logging.debug(f"[_get_embeddings] Requesting embeddings for {len(texts)} texts")
+    truncated = text[:_MAX_PAGE_CHARS]
+    prompt = (
+        f'Summarize the following webpage content in relation to the search query: "{query}"\n\n'
+        f"Focus on the most relevant facts, data, and insights. Be concise.\n\n"
+        f"Webpage content:\n{truncated}\n\nSummary:"
+    )
     resp = requests.post(
-        f"{DEEPINFRA_BASE_URL}/embeddings",
+        f"{DEEPINFRA_BASE_URL}/chat/completions",
         headers={
             "Authorization": f"Bearer {DEEPINFRA_API_KEY}",
             "Content-Type": "application/json",
         },
-        json={"model": EMBEDDING_MODEL, "input": texts},
+        json={
+            "model": _SUMMARIZE_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 512,
+            "temperature": 0.2,
+        },
         timeout=60,
     )
-    logging.debug(f"[_get_embeddings] took {time.time() - t:.2f}s, status={resp.status_code}")
+    logging.debug(f"[_summarize_page] Summarization took {time.time() - t:.2f}s, status={resp.status_code}")
     resp.raise_for_status()
-    data = resp.json()
-    return [item["embedding"] for item in sorted(data["data"], key=lambda x: x["index"])]
+    return resp.json()["choices"][0]["message"]["content"].strip()
 
 
 def _strip_html(query: str, html: str) -> str:
