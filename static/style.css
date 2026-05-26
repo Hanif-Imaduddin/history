@@ -131,12 +131,57 @@ body {
 .entry-status-rejected { color: #EF4444; }
 .entry-status-pending  { color: var(--text-secondary); }
 
+.entry-toggle-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0.1rem 0;
+  margin: 0.15rem 0;
+  display: block;
+  line-height: 1.4;
+}
+.entry-toggle-btn:hover {
+  text-decoration: underline;
+}
+
 .entry-message {
+  max-height: 500px;
+  overflow-y: auto;
+  margin-top: 0.25rem;
+}
+.entry-message-collapsed {
+  display: none;
+}
+
+.entry-msg-block {
+  background: var(--surface);
+  border-radius: 4px;
+  padding: 0.4rem 0.55rem;
+  margin-bottom: 0.4rem;
+  border-left: 2px solid var(--border);
+}
+.entry-msg-block.entry-msg-tool {
+  border-left-color: #10B981;
+}
+.entry-msg-type-label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin-bottom: 0.2rem;
+}
+.entry-msg-content {
+  font-size: 0.78rem;
   color: var(--text-secondary);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 150px;
-  overflow-y: auto;
+  margin: 0;
+  font-family: inherit;
+  line-height: 1.5;
 }
 
 /* ── Spinner ──────────────────────────────────────────────────────────── */

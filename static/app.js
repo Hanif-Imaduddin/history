@@ -92,10 +92,16 @@ const AGENT_CLASS = {
   final_summary:       'entry-final',
 };
 
+const MSG_TYPE_LABEL = {
+  ai:     'Respons Agent',
+  tool:   'Hasil Tool',
+  human:  'User',
+  system: 'System',
+};
+
 function addLogEntry(options) {
   const { label, agentKey, statusText, statusClass, messages, badge } = options;
 
-  // Remove empty-state placeholder
   const placeholder = activityLog.querySelector('p');
   if (placeholder) placeholder.remove();
 
@@ -110,12 +116,39 @@ function addLogEntry(options) {
     html += `<div class="${statusClass} mb-1" style="font-size:0.8rem;font-weight:500">${statusText}</div>`;
   }
 
-  if (messages && messages.length > 0) {
-    const preview = messages[0].slice(0, 500);
-    html += `<div class="entry-message">${escapeHtml(preview)}</div>`;
+  const hasMessages = messages && messages.length > 0;
+  if (hasMessages) {
+    const count = messages.length;
+    html += `<button class="entry-toggle-btn" data-count="${count}">&#9660; Lihat output (${count} pesan)</button>`;
+    html += `<div class="entry-message entry-message-collapsed">`;
+    messages.forEach(m => {
+      const msgObj = (typeof m === 'object' && m !== null) ? m : { type: 'ai', content: String(m) };
+      const typeKey = (msgObj.type || 'ai').toLowerCase();
+      const typeLabel = msgObj.tool_name
+        ? `Tool: ${escapeHtml(msgObj.tool_name)}`
+        : (MSG_TYPE_LABEL[typeKey] || typeKey);
+      const isToolMsg = typeKey === 'tool';
+      html += `<div class="entry-msg-block${isToolMsg ? ' entry-msg-tool' : ''}">`;
+      html += `<span class="entry-msg-type-label">${typeLabel}</span>`;
+      html += `<pre class="entry-msg-content">${escapeHtml(msgObj.content || '')}</pre>`;
+      html += `</div>`;
+    });
+    html += `</div>`;
   }
 
   el.innerHTML = html;
+
+  if (hasMessages) {
+    el.querySelector('.entry-toggle-btn').addEventListener('click', function () {
+      const msgEl = this.nextElementSibling;
+      const collapsed = msgEl.classList.toggle('entry-message-collapsed');
+      const count = this.dataset.count;
+      this.innerHTML = collapsed
+        ? `&#9660; Lihat output (${count} pesan)`
+        : `&#9650; Sembunyikan output`;
+    });
+  }
+
   activityLog.appendChild(el);
   scrollLog();
 }
@@ -193,7 +226,7 @@ function handleEvent(event) {
         agentKey:    'lead_orchestrator',
         statusText,
         statusClass,
-        messages:    event.feedback ? [event.feedback] : [],
+        messages:    event.messages && event.messages.length > 0 ? event.messages : [],
         badge:       { text: statusLabel, variant: badgeVariant },
       });
       iterCurrent.textContent = event.iteration;

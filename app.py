@@ -71,16 +71,31 @@ _AGENT_LABELS = {
 }
 
 
-def _extract_messages_preview(updates: dict) -> list[str]:
+def _extract_messages_full(updates: dict) -> list[dict]:
     msgs = updates.get("messages", [])
     if not isinstance(msgs, list):
         msgs = [msgs]
-    previews = []
+    result = []
     for m in msgs:
-        content = getattr(m, "content", None) or (m.get("content") if isinstance(m, dict) else None)
-        if content:
-            previews.append(str(content)[:600])
-    return previews
+        if isinstance(m, dict):
+            msg_type = m.get("type", "message")
+            content = m.get("content", "")
+            tool_name = m.get("name", "")
+        else:
+            msg_type = getattr(m, "type", type(m).__name__)
+            content = getattr(m, "content", "")
+            tool_name = getattr(m, "name", "") or ""
+
+        if isinstance(content, list):
+            content = " ".join(str(c) for c in content if c)
+
+        content_str = str(content).strip() if content else ""
+        if content_str:
+            entry: dict = {"type": str(msg_type), "content": content_str}
+            if tool_name:
+                entry["tool_name"] = str(tool_name)
+            result.append(entry)
+    return result
 
 
 def _parse_chunk(chunk: dict) -> None:
@@ -90,7 +105,7 @@ def _parse_chunk(chunk: dict) -> None:
             continue
 
         label = _AGENT_LABELS.get(node_name, node_name)
-        previews = _extract_messages_preview(updates)
+        messages = _extract_messages_full(updates)
 
         if node_name == "lead_orchestrator":
             status = updates.get("approval_status", "pending")
@@ -102,7 +117,7 @@ def _parse_chunk(chunk: dict) -> None:
                 "status": status,
                 "feedback": feedback,
                 "iteration": iteration,
-                "messages": previews,
+                "messages": [{"type": "ai", "content": feedback}] if feedback else [],
             })
 
         elif node_name == "final_summary":
@@ -114,7 +129,7 @@ def _parse_chunk(chunk: dict) -> None:
                 "type": "agent_complete",
                 "agent": node_name,
                 "label": label,
-                "messages": previews,
+                "messages": messages,
             })
 
 
