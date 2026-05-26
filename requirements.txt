@@ -12,6 +12,11 @@ langgraph>=0.2.0
 
 # Database
 pymongo>=4.7.0
+psycopg2-binary>=2.9.9
+
+# Auth
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
 
 # HTTP / web
 requests>=2.31.0

@@ -1,0 +1,22 @@
+Collecting python-jose[cryptography]
+  Downloading python_jose-3.5.0-py2.py3-none-any.whl.metadata (5.5 kB)
+Collecting ecdsa!=0.15 (from python-jose[cryptography])
+  Downloading ecdsa-0.19.2-py2.py3-none-any.whl.metadata (29 kB)
+Collecting rsa!=4.1.1,!=4.4,<5.0,>=4.0 (from python-jose[cryptography])
+  Downloading rsa-4.9.1-py3-none-any.whl.metadata (5.6 kB)
+Collecting pyasn1>=0.5.0 (from python-jose[cryptography])
+  Downloading pyasn1-0.6.3-py3-none-any.whl.metadata (8.4 kB)
+Collecting cryptography>=3.4.0 (from python-jose[cryptography])
+  Downloading cryptography-48.0.0-cp311-abi3-win_amd64.whl.metadata (4.3 kB)
+Requirement already satisfied: cffi>=2.0.0 in C:\Users\hanif\.conda\envs\capstone\Lib\site-packages (from cryptography>=3.4.0->python-jose[cryptography]) (2.0.0)
+Requirement already satisfied: pycparser in C:\Users\hanif\.conda\envs\capstone\Lib\site-packages (from cffi>=2.0.0->cryptography>=3.4.0->python-jose[cryptography]) (2.23)
+Requirement already satisfied: six>=1.9.0 in C:\Users\hanif\.conda\envs\capstone\Lib\site-packages (from ecdsa!=0.15->python-jose[cryptography]) (1.17.0)
+Downloading python_jose-3.5.0-py2.py3-none-any.whl (34 kB)
+Downloading rsa-4.9.1-py3-none-any.whl (34 kB)
+Downloading cryptography-48.0.0-cp311-abi3-win_amd64.whl (3.8 MB)
+   ---------------------------------------- 3.8/3.8 MB 6.5 MB/s  0:00:00
+Downloading ecdsa-0.19.2-py2.py3-none-any.whl (150 kB)
+Downloading pyasn1-0.6.3-py3-none-any.whl (83 kB)
+Installing collected packages: pyasn1, ecdsa, rsa, cryptography, python-jose
+
+Successfully installed cryptography-48.0.0 ecdsa-0.19.2 pyasn1-0.6.3 python-jose-3.5.0 rsa-4.9.1

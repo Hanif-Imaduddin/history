@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClarioAI — Admin</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    body { display: none; }
+    .page-wrap { padding: 1.25rem; max-width: 1100px; margin: 0 auto; }
+    table { font-size: 0.83rem; }
+    th { font-weight: 600; color: var(--text-secondary); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; background: var(--surface) !important; }
+    td { vertical-align: middle; color: var(--text-primary); }
+    .badge-role-admin  { background: var(--accent) !important; }
+    .badge-role-user   { background: #94A3B8 !important; }
+    .badge-fp-flag     { background: #EF4444 !important; }
+    .badge-event       { font-size: 0.7rem; }
+    .log-detail        { color: var(--text-secondary); font-size: 0.78rem; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .section-title     { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.75rem; }
+    .create-form       { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
+    .create-form .row  { align-items: flex-end; }
+    .table-wrap        { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .nav-tabs          { border-bottom: 1px solid var(--border); }
+    .sub-tabs          { border-bottom: 1px solid var(--border); margin-bottom: 1rem; }
+    .empty-row td      { text-align: center; color: var(--text-secondary); padding: 1.5rem !important; }
+  </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar navbar-expand-lg px-3">
+  <span class="navbar-brand fw-semibold">ClarioAI</span>
+  <span class="ms-2 badge bg-primary" style="font-size:0.7rem">Admin</span>
+  <div class="ms-auto d-flex align-items-center gap-3">
+    <span id="nav-username" class="small text-secondary"></span>
+    <a href="/" class="btn btn-sm btn-outline-secondary" style="font-size:0.8rem">Aplikasi</a>
+    <button id="btn-logout" class="btn btn-sm btn-outline-secondary" style="font-size:0.8rem">Logout</button>
+  </div>
+</nav>
+
+<div class="page-wrap">
+
+  <!-- Main tabs -->
+  <ul class="nav nav-tabs mb-4 mt-2" id="main-tabs">
+    <li class="nav-item">
+      <button class="nav-link active" data-tab="tab-users">Pengguna</button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" data-tab="tab-logs">Log</button>
+    </li>
+  </ul>
+
+  <!-- ── Tab: Pengguna ────────────────────────────────────────────────────── -->
+  <div id="tab-users">
+
+    <!-- Create user form -->
+    <div class="create-form">
+      <div class="section-title mb-3">Buat Akun Baru</div>
+      <div id="create-alert" class="alert d-none mb-3" style="font-size:0.83rem"></div>
+      <div class="row g-2">
+        <div class="col-sm-3">
+          <label class="form-label small text-secondary">Username</label>
+          <input id="new-username" type="text" class="form-control form-control-sm" placeholder="Username" />
+        </div>
+        <div class="col-sm-3">
+          <label class="form-label small text-secondary">Password</label>
+          <input id="new-password" type="password" class="form-control form-control-sm" placeholder="Password" />
+        </div>
+        <div class="col-sm-2">
+          <label class="form-label small text-secondary">Role</label>
+          <select id="new-role" class="form-select form-select-sm">
+            <option value="user">User</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="col-sm-2 d-flex align-items-end">
+          <button id="btn-create-user" class="btn btn-primary btn-sm w-100">Buat Akun</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- User table -->
+    <div class="section-title">Daftar Pengguna</div>
+    <div class="table-wrap">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th class="ps-3">Username</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Analisis Hari Ini</th>
+            <th>Tgl Dibuat</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="user-tbody">
+          <tr class="empty-row"><td colspan="6">Memuat data…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div><!-- /tab-users -->
+
+  <!-- ── Tab: Log ────────────────────────────────────────────────────────── -->
+  <div id="tab-logs" class="d-none">
+
+    <!-- Sub-tabs -->
+    <ul class="nav sub-tabs" id="log-tabs">
+      <li class="nav-item">
+        <button class="nav-link active ps-0" data-logtab="log-analysis">Log Analisis</button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-logtab="log-auth">Log Registrasi & Login</button>
+      </li>
+    </ul>
+
+    <!-- Analysis logs -->
+    <div id="log-analysis">
+      <div class="table-wrap">
+        <table class="table table-hover mb-0">
+          <thead>
+            <tr>
+              <th class="ps-3">Waktu</th>
+              <th>User</th>
+              <th>Sektor</th>
+              <th>Session ID</th>
+            </tr>
+          </thead>
+          <tbody id="analysis-tbody">
+            <tr class="empty-row"><td colspan="4">Memuat log…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Auth logs -->
+    <div id="log-auth" class="d-none">
+      <div class="table-wrap">
+        <table class="table table-hover mb-0">
+          <thead>
+            <tr>
+              <th class="ps-3">Waktu</th>
+              <th>User</th>
+              <th>Event</th>
+              <th>Detail</th>
+              <th>IP</th>
+            </tr>
+          </thead>
+          <tbody id="auth-tbody">
+            <tr class="empty-row"><td colspan="5">Memuat log…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /tab-logs -->
+
+</div><!-- /page-wrap -->
+
+<!-- Delete confirm modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content" style="border: 1px solid var(--border); border-radius: 8px;">
+      <div class="modal-body py-3 px-4">
+        <p class="mb-1" style="font-size:0.88rem; font-weight:600">Hapus akun ini?</p>
+        <p id="delete-modal-username" class="mb-0 text-secondary" style="font-size:0.82rem"></p>
+      </div>
+      <div class="modal-footer py-2 border-0">
+        <button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+        <button id="btn-confirm-delete" class="btn btn-sm btn-danger">Hapus</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+'use strict';
+
+let _currentUser = null;
+let _deleteTargetId = null;
+const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+
+// ── Auth check ────────────────────────────────────────────────────────────────
+(async () => {
+  try {
+    const r = await fetch('/auth/me');
+    const d = await r.json();
+    if (!d.authenticated || d.role !== 'admin') {
+      window.location.href = d.authenticated ? '/' : '/login';
+      return;
+    }
+    _currentUser = d;
+    document.getElementById('nav-username').textContent = d.username;
+    document.body.style.display = 'block';
+    loadUsers();
+  } catch (_) {
+    window.location.href = '/login';
+  }
+})();
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+document.querySelectorAll('#main-tabs .nav-link').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#main-tabs .nav-link').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    document.getElementById('tab-users').classList.toggle('d-none', tab !== 'tab-users');
+    document.getElementById('tab-logs').classList.toggle('d-none', tab !== 'tab-logs');
+    if (tab === 'tab-logs') loadLogs();
+  });
+});
+
+document.querySelectorAll('#log-tabs .nav-link').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#log-tabs .nav-link').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const lt = btn.dataset.logtab;
+    document.getElementById('log-analysis').classList.toggle('d-none', lt !== 'log-analysis');
+    document.getElementById('log-auth').classList.toggle('d-none', lt !== 'log-auth');
+  });
+});
+
+// ── Logout ────────────────────────────────────────────────────────────────────
+document.getElementById('btn-logout').addEventListener('click', async () => {
+  await fetch('/auth/logout', { method: 'POST' });
+  window.location.href = '/login';
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function esc(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' })
+           + ' ' + d.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
+  } catch (_) { return iso; }
+}
+function eventBadge(evt) {
+  const map = {
+    'register':            'success',
+    'register_fp_duplicate': 'danger',
+    'login':               'primary',
+    'login_failed':        'warning',
+  };
+  const variant = map[evt] || 'secondary';
+  const labels = {
+    'register': 'Daftar',
+    'register_fp_duplicate': 'Daftar — Perangkat Duplikat',
+    'login': 'Login',
+    'login_failed': 'Login Gagal',
+  };
+  return `<span class="badge bg-${variant} badge-event">${esc(labels[evt] || evt)}</span>`;
+}
+
+// ── Load users ────────────────────────────────────────────────────────────────
+async function loadUsers() {
+  const tbody = document.getElementById('user-tbody');
+  tbody.innerHTML = '<tr class="empty-row"><td colspan="6">Memuat data…</td></tr>';
+  try {
+    const res = await fetch('/admin/users');
+    if (!res.ok) throw new Error('Gagal memuat user.');
+    const users = await res.json();
+    renderUsers(users);
+  } catch (e) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="6">Gagal memuat data pengguna.</td></tr>`;
+  }
+}
+
+function renderUsers(users) {
+  const tbody = document.getElementById('user-tbody');
+  if (!users || users.length === 0) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">Belum ada pengguna.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = users.map(u => {
+    const roleBadge = `<span class="badge badge-role-${u.role}">${u.role}</span>`;
+    const statusBadge = u.is_active
+      ? '<span class="badge bg-success" style="font-size:0.7rem">Aktif</span>'
+      : '<span class="badge bg-secondary" style="font-size:0.7rem">Nonaktif</span>';
+    const isMe = _currentUser && u.id === _currentUser.user_id;
+    const deleteBtn = isMe
+      ? '<span class="text-secondary small">—</span>'
+      : `<button class="btn btn-sm btn-outline-danger" style="font-size:0.75rem;padding:1px 8px"
+           onclick="confirmDelete(${u.id}, '${esc(u.username)}')">Hapus</button>`;
+    const today = u.today_analyses ?? 0;
+    const countColor = u.role === 'user' && today >= 5 ? 'text-danger fw-semibold' : '';
+    return `<tr>
+      <td class="ps-3 fw-medium">${esc(u.username)}${isMe ? ' <span class="text-secondary" style="font-size:0.72rem">(kamu)</span>' : ''}</td>
+      <td>${roleBadge}</td>
+      <td>${statusBadge}</td>
+      <td class="${countColor}">${today} / 5</td>
+      <td>${fmtDate(u.created_at)}</td>
+      <td class="pe-3">${deleteBtn}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Create user ───────────────────────────────────────────────────────────────
+document.getElementById('btn-create-user').addEventListener('click', async () => {
+  const alertEl = document.getElementById('create-alert');
+  alertEl.className = 'alert d-none';
+
+  const username = document.getElementById('new-username').value.trim();
+  const password = document.getElementById('new-password').value;
+  const role     = document.getElementById('new-role').value;
+
+  if (!username || !password) {
+    alertEl.textContent = 'Isi username dan password.';
+    alertEl.className = 'alert alert-danger mb-3';
+    return;
+  }
+
+  const btn = document.getElementById('btn-create-user');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, role }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alertEl.textContent = data.detail || 'Gagal membuat akun.';
+      alertEl.className = 'alert alert-danger mb-3';
+      return;
+    }
+    alertEl.textContent = `Akun "${data.username}" berhasil dibuat.`;
+    alertEl.className = 'alert alert-success mb-3';
+    document.getElementById('new-username').value = '';
+    document.getElementById('new-password').value = '';
+    loadUsers();
+  } catch (e) {
+    alertEl.textContent = 'Terjadi kesalahan jaringan.';
+    alertEl.className = 'alert alert-danger mb-3';
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// ── Delete user ───────────────────────────────────────────────────────────────
+function confirmDelete(userId, username) {
+  _deleteTargetId = userId;
+  document.getElementById('delete-modal-username').textContent = username;
+  deleteModal.show();
+}
+
+document.getElementById('btn-confirm-delete').addEventListener('click', async () => {
+  if (!_deleteTargetId) return;
+  deleteModal.hide();
+  try {
+    const res = await fetch(`/admin/users/${_deleteTargetId}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) { alert(data.detail || 'Gagal menghapus.'); return; }
+    loadUsers();
+  } catch (e) {
+    alert('Terjadi kesalahan jaringan.');
+  }
+  _deleteTargetId = null;
+});
+
+// ── Load logs ─────────────────────────────────────────────────────────────────
+let _logsLoaded = false;
+async function loadLogs() {
+  if (_logsLoaded) return;
+  _logsLoaded = true;
+  loadAnalysisLogs();
+  loadAuthLogs();
+}
+
+async function loadAnalysisLogs() {
+  const tbody = document.getElementById('analysis-tbody');
+  tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Memuat log…</td></tr>';
+  try {
+    const res = await fetch('/admin/logs/analysis');
+    const logs = await res.json();
+    if (!logs || logs.length === 0) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Belum ada log analisis.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = logs.map(l => `<tr>
+      <td class="ps-3">${fmtDate(l.created_at)}</td>
+      <td>${esc(l.username || '—')}</td>
+      <td>${esc(l.sector || '—')}</td>
+      <td class="text-secondary" style="font-size:0.75rem;font-family:monospace">${esc((l.session_id || '').slice(0,16))}…</td>
+    </tr>`).join('');
+  } catch (_) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Gagal memuat log.</td></tr>';
+  }
+}
+
+async function loadAuthLogs() {
+  const tbody = document.getElementById('auth-tbody');
+  tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Memuat log…</td></tr>';
+  try {
+    const res = await fetch('/admin/logs/auth');
+    const logs = await res.json();
+    if (!logs || logs.length === 0) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Belum ada log auth.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = logs.map(l => `<tr>
+      <td class="ps-3">${fmtDate(l.created_at)}</td>
+      <td>${esc(l.username || '—')}</td>
+      <td>${eventBadge(l.event_type)}</td>
+      <td class="log-detail">${esc(l.details || '—')}</td>
+      <td class="text-secondary">${esc(l.ip_address || '—')}</td>
+    </tr>`).join('');
+  } catch (_) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Gagal memuat log.</td></tr>';
+  }
+}
+</script>
+</body>
+</html>
