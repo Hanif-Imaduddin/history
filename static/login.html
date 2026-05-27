@@ -6,96 +6,58 @@
   <title>ClarioAI — Masuk</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
   <link rel="stylesheet" href="/static/style.css" />
-  <style>
-    body {
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: var(--surface);
-    }
-    .auth-card {
-      width: 100%;
-      max-width: 400px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 2rem 2rem 1.5rem;
-    }
-    .auth-brand {
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: var(--text-primary);
-      letter-spacing: 0.02em;
-      margin-bottom: 0.25rem;
-    }
-    .auth-sub {
-      font-size: 0.82rem;
-      color: var(--text-secondary);
-      margin-bottom: 1.5rem;
-    }
-    .fp-note {
-      font-size: 0.75rem;
-      color: var(--text-secondary);
-      margin-top: 0.75rem;
-      text-align: center;
-    }
-    .alert { font-size: 0.83rem; }
-  </style>
 </head>
-<body>
+<body class="login-page">
 
 <div class="auth-card">
   <div class="auth-brand">ClarioAI</div>
-  <div class="auth-sub">Decision Support System</div>
+  <div class="auth-sub">Multi-Agent Decision Support System</div>
 
-  <!-- Tabs -->
-  <ul class="nav nav-tabs mb-4" id="auth-tabs">
+  <ul class="nav nav-tabs mb-4" id="auth-tabs" style="padding:0;border-bottom:1px solid var(--border)">
     <li class="nav-item">
-      <button class="nav-link active" id="tab-login-btn" data-tab="login">Masuk</button>
+      <button class="nav-link active" id="tab-login-btn" data-tab="login"
+              style="padding-left:0">Masuk</button>
     </li>
     <li class="nav-item">
       <button class="nav-link" id="tab-register-btn" data-tab="register">Daftar</button>
     </li>
   </ul>
 
-  <!-- Alert -->
   <div id="auth-alert" class="alert d-none" role="alert"></div>
 
   <!-- Login Form -->
   <div id="form-login">
     <div class="mb-3">
-      <label class="form-label small text-secondary">Username</label>
+      <label class="form-label">Username</label>
       <input id="login-username" type="text" class="form-control form-control-sm"
              placeholder="Masukkan username" autocomplete="username" />
     </div>
     <div class="mb-3">
-      <label class="form-label small text-secondary">Password</label>
+      <label class="form-label">Password</label>
       <input id="login-password" type="password" class="form-control form-control-sm"
              placeholder="Masukkan password" autocomplete="current-password" />
     </div>
-    <button id="btn-login" class="btn btn-primary btn-sm w-100">Masuk</button>
+    <button id="btn-login" class="btn btn-primary btn-sm w-100" style="padding:0.5rem">Masuk</button>
   </div>
 
   <!-- Register Form -->
   <div id="form-register" class="d-none">
     <div class="mb-3">
-      <label class="form-label small text-secondary">Username</label>
+      <label class="form-label">Username</label>
       <input id="reg-username" type="text" class="form-control form-control-sm"
              placeholder="Minimal 3 karakter" autocomplete="username" />
     </div>
     <div class="mb-3">
-      <label class="form-label small text-secondary">Password</label>
+      <label class="form-label">Password</label>
       <input id="reg-password" type="password" class="form-control form-control-sm"
              placeholder="Minimal 6 karakter" autocomplete="new-password" />
     </div>
     <div class="mb-3">
-      <label class="form-label small text-secondary">Konfirmasi Password</label>
+      <label class="form-label">Konfirmasi Password</label>
       <input id="reg-confirm" type="password" class="form-control form-control-sm"
              placeholder="Ulangi password" autocomplete="new-password" />
     </div>
-    <button id="btn-register" class="btn btn-primary btn-sm w-100">Daftar</button>
+    <button id="btn-register" class="btn btn-primary btn-sm w-100" style="padding:0.5rem">Daftar</button>
     <p class="fp-note">Perangkat ini akan diidentifikasi untuk mencegah pembuatan akun ganda.</p>
   </div>
 </div>
@@ -126,7 +88,7 @@ function hideAlert() {
   document.getElementById('auth-alert').className = 'alert d-none';
 }
 
-// ── FingerprintJS — collected silently ────────────────────────────────────────
+// ── FingerprintJS ─────────────────────────────────────────────────────────────
 let _fingerprint = '';
 (async () => {
   try {
@@ -134,9 +96,7 @@ let _fingerprint = '';
     const fp = await FpModule.load();
     const result = await fp.get();
     _fingerprint = result.visitorId;
-  } catch (_) {
-    // fingerprint unavailable — registration will proceed without it
-  }
+  } catch (_) {}
 })();
 
 // ── Login ─────────────────────────────────────────────────────────────────────
@@ -147,8 +107,7 @@ document.getElementById('btn-login').addEventListener('click', async () => {
   if (!username || !password) { showAlert('Isi semua field.'); return; }
 
   const btn = document.getElementById('btn-login');
-  btn.disabled = true;
-  btn.textContent = 'Memproses…';
+  btn.disabled = true; btn.textContent = 'Memproses…';
 
   try {
     const res = await fetch('/auth/login', {
@@ -159,15 +118,13 @@ document.getElementById('btn-login').addEventListener('click', async () => {
     const data = await res.json();
     if (!res.ok) { showAlert(data.detail || 'Login gagal.'); return; }
     window.location.href = data.role === 'admin' ? '/admin' : '/';
-  } catch (e) {
+  } catch (_) {
     showAlert('Terjadi kesalahan jaringan.');
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Masuk';
+    btn.disabled = false; btn.textContent = 'Masuk';
   }
 });
 
-// Allow Enter key on login form
 ['login-username', 'login-password'].forEach(id => {
   document.getElementById(id).addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('btn-login').click();
@@ -177,14 +134,13 @@ document.getElementById('btn-login').addEventListener('click', async () => {
 // ── Register ──────────────────────────────────────────────────────────────────
 document.getElementById('btn-register').addEventListener('click', async () => {
   hideAlert();
-  const username = document.getElementById('reg-username').value.trim();
-  const password = document.getElementById('reg-password').value;
+  const username        = document.getElementById('reg-username').value.trim();
+  const password        = document.getElementById('reg-password').value;
   const confirm_password = document.getElementById('reg-confirm').value;
   if (!username || !password || !confirm_password) { showAlert('Isi semua field.'); return; }
 
   const btn = document.getElementById('btn-register');
-  btn.disabled = true;
-  btn.textContent = 'Memproses…';
+  btn.disabled = true; btn.textContent = 'Memproses…';
 
   try {
     const res = await fetch('/auth/register', {
@@ -196,11 +152,10 @@ document.getElementById('btn-register').addEventListener('click', async () => {
     if (!res.ok) { showAlert(data.detail || 'Registrasi gagal.'); return; }
     showAlert('Registrasi berhasil! Mengalihkan…', 'success');
     setTimeout(() => { window.location.href = '/'; }, 1000);
-  } catch (e) {
+  } catch (_) {
     showAlert('Terjadi kesalahan jaringan.');
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Daftar';
+    btn.disabled = false; btn.textContent = 'Daftar';
   }
 });
 

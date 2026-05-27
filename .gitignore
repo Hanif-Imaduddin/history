@@ -6,6 +6,10 @@
 # BUT keep template/example files
 !.env.template
 
+# Docker local config (bukan untuk di-push ke repo)
+docker-compose.yml
+docker-compose.override.yml
+
 # Ignore Python cache
 
 **pycache**/

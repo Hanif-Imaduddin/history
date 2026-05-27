@@ -1,6 +1,6 @@
 'use strict';
 
-// ── Tab switching (shared helper) ──────────────────────────────────────────
+// ── Tab switching ──────────────────────────────────────────────────────────────
 function initTabs(tabsEl) {
   tabsEl.querySelectorAll('.nav-link').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -18,51 +18,73 @@ function initTabs(tabsEl) {
 initTabs(document.getElementById('left-tabs'));
 initTabs(document.getElementById('right-tabs'));
 
-// ── DOM refs ───────────────────────────────────────────────────────────────
-const statusBadge       = document.getElementById('status-badge');
-const iterCounter       = document.getElementById('iter-counter');
-const iterCurrent       = document.getElementById('iter-current');
-const iterMax           = document.getElementById('iter-max');
+// ── DOM refs ───────────────────────────────────────────────────────────────────
+const statusBadge        = document.getElementById('status-badge');
+const iterCounter        = document.getElementById('iter-counter');
+const iterCurrent        = document.getElementById('iter-current');
+const iterMax            = document.getElementById('iter-max');
 
-const inputForm         = document.getElementById('input-form');
-const feedbackPanel     = document.getElementById('feedback-panel');
-const runningIndicator  = document.getElementById('running-indicator');
-const runningAgent      = document.getElementById('running-current-agent');
+const inputForm          = document.getElementById('input-form');
+const feedbackPanel      = document.getElementById('feedback-panel');
+const runningIndicator   = document.getElementById('running-indicator');
+const runningAgent       = document.getElementById('running-current-agent');
 
-const inpSector         = document.getElementById('inp-sector');
-const inpAudience       = document.getElementById('inp-audience');
-const inpPrompt         = document.getElementById('inp-prompt');
-const inpIterations     = document.getElementById('inp-iterations');
-const btnStart          = document.getElementById('btn-start');
+const inpSector          = document.getElementById('inp-sector');
+const inpAudience        = document.getElementById('inp-audience');
+const inpPrompt          = document.getElementById('inp-prompt');
+const inpIterations      = document.getElementById('inp-iterations');
+const btnStart           = document.getElementById('btn-start');
 
 const feedbackAssessment = document.getElementById('feedback-assessment');
-const feedbackText      = document.getElementById('feedback-text');
-const btnSubmitFeedback = document.getElementById('btn-submit-feedback');
+const feedbackText       = document.getElementById('feedback-text');
+const btnSubmitFeedback  = document.getElementById('btn-submit-feedback');
 
-const tabReviewBtn      = document.getElementById('tab-review-btn');
-const reviewVerdict     = document.getElementById('review-verdict');
-const reviewFeedback    = document.getElementById('review-feedback');
-const btnAccept         = document.getElementById('btn-accept');
-const btnRevise         = document.getElementById('btn-revise');
+const tabReviewBtn       = document.getElementById('tab-review-btn');
+const reviewVerdict      = document.getElementById('review-verdict');
+const reviewFeedback     = document.getElementById('review-feedback');
+const btnAccept          = document.getElementById('btn-accept');
+const btnRevise          = document.getElementById('btn-revise');
 
-const activityLog       = document.getElementById('activity-log');
-
-const reportPlaceholder = document.getElementById('report-placeholder');
-const reportContent     = document.getElementById('report-content');
-const tabReportBtn      = document.getElementById('tab-report-btn');
-
-const tabSessionsBtn    = document.getElementById('tab-sessions-btn');
-const sessionsList      = document.getElementById('sessions-list');
+const activityLog        = document.getElementById('activity-log');
+const reportPlaceholder  = document.getElementById('report-placeholder');
+const reportContent      = document.getElementById('report-content');
+const tabReportBtn       = document.getElementById('tab-report-btn');
+const tabSessionsBtn     = document.getElementById('tab-sessions-btn');
+const sessionsList       = document.getElementById('sessions-list');
 const btnRefreshSessions = document.getElementById('btn-refresh-sessions');
-const btnNewSession     = document.getElementById('btn-new-session');
+const btnNewSession      = document.getElementById('btn-new-session');
 
-// ── State ──────────────────────────────────────────────────────────────────
+// ── State ──────────────────────────────────────────────────────────────────────
 let lastOrchestratorFeedback = '';
-let lastSynthesis = '';
-let lastEventId = 0;
-const receivedEventIds = new Set();
+let lastSynthesis            = '';
+let lastEventId              = 0;
+const receivedEventIds       = new Set();
+let _session_running         = false;
 
-// ── Utility ────────────────────────────────────────────────────────────────
+// ── Pipeline visualization ─────────────────────────────────────────────────────
+function setPipelineActive(agentKey) {
+  const node = document.getElementById(`pipe-${agentKey}`);
+  if (!node) return;
+  document.querySelectorAll('.pipe-node.active').forEach(n => {
+    n.classList.remove('active');
+    n.classList.add('done');
+  });
+  node.classList.remove('done');
+  node.classList.add('active');
+}
+
+function markPipelineDone(agentKey) {
+  const node = document.getElementById(`pipe-${agentKey}`);
+  if (!node) return;
+  node.classList.remove('active');
+  node.classList.add('done');
+}
+
+function clearPipeline() {
+  document.querySelectorAll('.pipe-node').forEach(n => n.classList.remove('active', 'done'));
+}
+
+// ── Utility ────────────────────────────────────────────────────────────────────
 function setStatus(label, variant) {
   statusBadge.textContent = label;
   statusBadge.className = `badge bg-${variant}`;
@@ -108,12 +130,14 @@ function addLogEntry(options) {
   const el = document.createElement('div');
   el.className = `activity-entry ${AGENT_CLASS[agentKey] || ''}`;
 
-  let html = `<div class="entry-agent-name">${label}`;
-  if (badge) html += ` <span class="badge bg-${badge.variant} ms-1" style="font-size:0.65rem;letter-spacing:0">${badge.text}</span>`;
-  html += `<span class="float-end text-secondary fw-normal" style="font-size:0.72rem">${timestamp()}</span></div>`;
+  let html = `<div class="entry-agent-name">${escapeHtml(label)}`;
+  if (badge) {
+    html += ` <span class="badge bg-${badge.variant}" style="font-size:0.6rem;letter-spacing:0">${badge.text}</span>`;
+  }
+  html += `<span class="float-end fw-normal" style="font-size:0.68rem;color:var(--text-muted)">${timestamp()}</span></div>`;
 
   if (statusText) {
-    html += `<div class="${statusClass} mb-1" style="font-size:0.8rem;font-weight:500">${statusText}</div>`;
+    html += `<div class="${statusClass} mb-1" style="font-size:0.78rem">${statusText}</div>`;
   }
 
   const hasMessages = messages && messages.length > 0;
@@ -122,7 +146,7 @@ function addLogEntry(options) {
     html += `<button class="entry-toggle-btn" data-count="${count}">&#9660; Lihat output (${count} pesan)</button>`;
     html += `<div class="entry-message entry-message-collapsed">`;
     messages.forEach(m => {
-      const msgObj = (typeof m === 'object' && m !== null) ? m : { type: 'ai', content: String(m) };
+      const msgObj  = (typeof m === 'object' && m !== null) ? m : { type: 'ai', content: String(m) };
       const typeKey = (msgObj.type || 'ai').toLowerCase();
       const typeLabel = msgObj.tool_name
         ? `Tool: ${escapeHtml(msgObj.tool_name)}`
@@ -140,9 +164,9 @@ function addLogEntry(options) {
 
   if (hasMessages) {
     el.querySelector('.entry-toggle-btn').addEventListener('click', function () {
-      const msgEl = this.nextElementSibling;
+      const msgEl    = this.nextElementSibling;
       const collapsed = msgEl.classList.toggle('entry-message-collapsed');
-      const count = this.dataset.count;
+      const count    = this.dataset.count;
       this.innerHTML = collapsed
         ? `&#9660; Lihat output (${count} pesan)`
         : `&#9650; Sembunyikan output`;
@@ -154,7 +178,7 @@ function addLogEntry(options) {
 }
 
 function escapeHtml(str) {
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function showToast(msg) {
@@ -163,12 +187,8 @@ function showToast(msg) {
   toast.show();
 }
 
-// ── Switch right panel to report tab ──────────────────────────────────────
-function activateReportTab() {
-  tabReportBtn.click();
-}
+function activateReportTab() { tabReportBtn.click(); }
 
-// ── Show the final report ──────────────────────────────────────────────────
 function renderFinalReport(markdown) {
   reportPlaceholder.classList.add('d-none');
   reportContent.classList.remove('d-none');
@@ -176,13 +196,12 @@ function renderFinalReport(markdown) {
   activateReportTab();
 }
 
-// ── Enable Final Review tab ────────────────────────────────────────────────
 function unlockReviewTab(verdict) {
   reviewVerdict.textContent = verdict || '';
   tabReviewBtn.classList.remove('disabled');
 }
 
-// ── SSE event handlers ─────────────────────────────────────────────────────
+// ── SSE event handlers ─────────────────────────────────────────────────────────
 function handleEvent(event) {
   switch (event.type) {
 
@@ -195,18 +214,24 @@ function handleEvent(event) {
       activityLog.innerHTML = '';
       receivedEventIds.clear();
       lastEventId = 0;
+      clearPipeline();
       showLeftPanel(runningIndicator);
       iterCounter.classList.remove('d-none');
       break;
 
+    case 'agent_started':
+      setPipelineActive(event.agent);
+      if (event.label) runningAgent.textContent = `${event.label} is working…`;
+      break;
+
     case 'agent_complete':
+      markPipelineDone(event.agent);
       runningAgent.textContent = '';
       addLogEntry({
         label:    event.label,
         agentKey: event.agent,
         messages: event.messages || [],
       });
-      runningAgent.textContent = 'Waiting for next agent…';
       break;
 
     case 'orchestrator_evaluation': {
@@ -222,16 +247,16 @@ function handleEvent(event) {
         statusText = `Decision: REJECTED  (iteration ${event.iteration})`;
       }
       addLogEntry({
-        label:       event.label || 'Lead Orchestrator',
-        agentKey:    'lead_orchestrator',
+        label:      event.label || 'Lead Orchestrator',
+        agentKey:   'lead_orchestrator',
         statusText,
         statusClass,
-        messages:    event.messages && event.messages.length > 0 ? event.messages : [],
-        badge:       { text: statusLabel, variant: badgeVariant },
+        messages:   event.messages && event.messages.length > 0 ? event.messages : [],
+        badge:      { text: statusLabel, variant: badgeVariant },
       });
-      iterCurrent.textContent = event.iteration;
-      lastOrchestratorFeedback = event.feedback || '';
-      lastSynthesis = event.synthesis || '';
+      iterCurrent.textContent        = event.iteration;
+      lastOrchestratorFeedback       = event.feedback || '';
+      lastSynthesis                  = event.synthesis || '';
       break;
     }
 
@@ -240,22 +265,21 @@ function handleEvent(event) {
       feedbackAssessment.textContent = event.orchestrator_feedback || '(No specific feedback provided)';
       feedbackText.value = '';
       showLeftPanel(feedbackPanel);
-      // Auto-switch to input tab if not already there
       document.getElementById('tab-input-btn').click();
       break;
 
     case 'final_result':
+      setPipelineActive('final_summary');
       setStatus('Complete', 'success');
       renderFinalReport(event.content);
       unlockReviewTab(lastOrchestratorFeedback);
       showLeftPanel(inputForm);
       iterCounter.classList.add('d-none');
+      setTimeout(() => markPipelineDone('final_summary'), 800);
       break;
 
     case 'done':
-      if (statusBadge.textContent === 'Running') {
-        setStatus('Complete', 'success');
-      }
+      if (statusBadge.textContent === 'Running') setStatus('Complete', 'success');
       showLeftPanel(inputForm);
       enableInputs(true);
       break;
@@ -266,11 +290,12 @@ function handleEvent(event) {
       showLeftPanel(inputForm);
       enableInputs(true);
       iterCounter.classList.add('d-none');
+      clearPipeline();
       break;
   }
 }
 
-// ── Enable / disable input form ────────────────────────────────────────────
+// ── Enable / disable inputs ────────────────────────────────────────────────────
 function enableInputs(enabled) {
   _session_running = !enabled;
   btnNewSession.disabled = !enabled;
@@ -279,17 +304,17 @@ function enableInputs(enabled) {
   });
 }
 
-// ── SSE connection ─────────────────────────────────────────────────────────
+// ── SSE connection ─────────────────────────────────────────────────────────────
 let evtSource = null;
 
 function connectSSE() {
-  if (evtSource) { evtSource.close(); }
-  const url = lastEventId > 0 ? `/api/events?last_event_id=${lastEventId}` : '/api/events';
-  evtSource = new EventSource(url);
+  if (evtSource) evtSource.close();
+  const url  = lastEventId > 0 ? `/api/events?last_event_id=${lastEventId}` : '/api/events';
+  evtSource  = new EventSource(url);
   evtSource.onmessage = (e) => {
     try {
       const event = JSON.parse(e.data);
-      const eid = e.lastEventId ? parseInt(e.lastEventId, 10) : null;
+      const eid   = e.lastEventId ? parseInt(e.lastEventId, 10) : null;
       if (eid) {
         if (receivedEventIds.has(eid)) return;
         receivedEventIds.add(eid);
@@ -298,18 +323,16 @@ function connectSSE() {
       handleEvent(event);
     } catch (_) {}
   };
-  evtSource.onerror = () => {
-    setTimeout(connectSSE, 3000);
-  };
+  evtSource.onerror = () => { setTimeout(connectSSE, 3000); };
 }
 
 connectSSE();
 
-// ── Start analysis ─────────────────────────────────────────────────────────
+// ── Start analysis ─────────────────────────────────────────────────────────────
 btnStart.addEventListener('click', async () => {
-  const sector = inpSector.value.trim();
+  const sector   = inpSector.value.trim();
   const audience = inpAudience.value.trim();
-  const prompt = inpPrompt.value.trim();
+  const prompt   = inpPrompt.value.trim();
 
   if (!sector || !audience || !prompt) {
     showToast('Please fill in all fields before starting.');
@@ -319,7 +342,7 @@ btnStart.addEventListener('click', async () => {
   enableInputs(false);
   btnNewSession.disabled = true;
   setStatus('Starting…', 'secondary');
-  iterMax.textContent = inpIterations.value;
+  iterMax.textContent     = inpIterations.value;
   iterCurrent.textContent = '0';
 
   try {
@@ -329,8 +352,8 @@ btnStart.addEventListener('click', async () => {
       body: JSON.stringify({
         sector_and_domain: sector,
         audience,
-        initial_prompt: prompt,
-        max_iterations: parseInt(inpIterations.value, 10),
+        initial_prompt:    prompt,
+        max_iterations:    parseInt(inpIterations.value, 10),
       }),
     });
     if (!res.ok) {
@@ -348,13 +371,10 @@ btnStart.addEventListener('click', async () => {
   }
 });
 
-// ── Submit mid-run feedback ────────────────────────────────────────────────
+// ── Submit mid-run feedback ────────────────────────────────────────────────────
 btnSubmitFeedback.addEventListener('click', async () => {
   const fb = feedbackText.value.trim();
-  if (!fb) {
-    showToast('Please enter your feedback before continuing.');
-    return;
-  }
+  if (!fb) { showToast('Please enter your feedback before continuing.'); return; }
 
   btnSubmitFeedback.disabled = true;
   setStatus('Resuming…', 'primary');
@@ -379,22 +399,17 @@ btnSubmitFeedback.addEventListener('click', async () => {
   }
 });
 
-// ── Final Review buttons ───────────────────────────────────────────────────
+// ── Final Review buttons ───────────────────────────────────────────────────────
 btnAccept.addEventListener('click', () => {
   setStatus('Accepted', 'success');
-  showToast('Report accepted. You may download or copy the report from the Final Report tab.');
+  showToast('Report accepted. You may copy the report from the Final Report tab.');
 });
 
 btnRevise.addEventListener('click', async () => {
   const fb = reviewFeedback.value.trim();
-  if (!fb) {
-    showToast('Enter feedback to guide the revision.');
-    return;
-  }
-
-  // Restart with the same constraints but new feedback as initial_prompt addendum
-  const newPrompt = inpPrompt.value.trim() + '\n\n[Revision request]: ' + fb;
-  inpPrompt.value = newPrompt;
+  if (!fb) { showToast('Enter feedback to guide the revision.'); return; }
+  const newPrompt     = inpPrompt.value.trim() + '\n\n[Revision request]: ' + fb;
+  inpPrompt.value     = newPrompt;
   reviewFeedback.value = '';
   tabReviewBtn.classList.add('disabled');
   reportContent.innerHTML = '';
@@ -406,33 +421,28 @@ btnRevise.addEventListener('click', async () => {
   btnStart.click();
 });
 
-// ── New Session ────────────────────────────────────────────────────────────
-// Track running state locally to gate the New Session button
-let _session_running = false;
-
+// ── New Session ────────────────────────────────────────────────────────────────
 function resetToNewSession() {
-  activityLog.innerHTML = '<p class="text-secondary small text-center mt-4">No activity yet. Start an analysis to see agent logs.</p>';
+  activityLog.innerHTML = '<p style="color:var(--text-muted);font-size:0.8rem;text-align:center;margin-top:2rem">No activity yet. Start an analysis to see agent logs.</p>';
   reportPlaceholder.classList.remove('d-none');
   reportContent.classList.add('d-none');
-  reportContent.innerHTML = '';
+  reportContent.innerHTML  = '';
   tabReviewBtn.classList.add('disabled');
   reviewVerdict.textContent = '';
-  reviewFeedback.value = '';
+  reviewFeedback.value      = '';
   setStatus('Idle', 'secondary');
   iterCounter.classList.add('d-none');
   iterCurrent.textContent = '0';
+  clearPipeline();
   showLeftPanel(inputForm);
   enableInputs(true);
   document.getElementById('tab-activity-btn').click();
   document.getElementById('tab-input-btn').click();
 }
 
-btnNewSession.addEventListener('click', () => {
-  if (_session_running) return;
-  resetToNewSession();
-});
+btnNewSession.addEventListener('click', () => { if (!_session_running) resetToNewSession(); });
 
-// ── Sessions list ───────────────────────────────────────────────────────────
+// ── Sessions list ──────────────────────────────────────────────────────────────
 function statusVariant(status) {
   if (status === 'approved') return 'success';
   if (status === 'rejected') return 'danger';
@@ -449,38 +459,37 @@ function formatDate(iso) {
 }
 
 async function loadSessions() {
-  sessionsList.innerHTML = '<p class="text-secondary small text-center mt-4">Loading…</p>';
+  sessionsList.innerHTML = '<p style="color:var(--text-muted);font-size:0.8rem;text-align:center;margin-top:1.5rem">Loading…</p>';
   try {
     const res = await fetch('/api/sessions');
-    if (!res.ok) throw new Error('Failed to load sessions');
-    const sessions = await res.json();
-    renderSessionList(sessions);
-  } catch (e) {
-    sessionsList.innerHTML = `<p class="text-secondary small text-center mt-4">Could not load sessions.</p>`;
+    if (!res.ok) throw new Error();
+    renderSessionList(await res.json());
+  } catch (_) {
+    sessionsList.innerHTML = '<p style="color:var(--text-muted);font-size:0.8rem;text-align:center">Could not load sessions.</p>';
   }
 }
 
 function renderSessionList(sessions) {
-  if (!sessions || sessions.length === 0) {
-    sessionsList.innerHTML = '<p class="text-secondary small text-center mt-4">No sessions found. Start your first analysis!</p>';
+  if (!sessions || !sessions.length) {
+    sessionsList.innerHTML = '<p style="color:var(--text-muted);font-size:0.8rem;text-align:center;margin-top:1.5rem">No sessions found. Start your first analysis!</p>';
     return;
   }
   sessionsList.innerHTML = '';
   sessions.forEach(s => {
-    const item = document.createElement('div');
-    item.className = 'session-item';
+    const item          = document.createElement('div');
+    item.className      = 'session-item';
     item.dataset.stateId = s.state_id;
 
     const promptPreview = escapeHtml((s.prompt || '').slice(0, 90)) + ((s.prompt || '').length > 90 ? '…' : '');
-    const dateStr = formatDate(s.created_at);
-    const reportIcon = s.has_report ? '<span class="session-has-report" title="Has final report">&#9679;</span> ' : '';
+    const dateStr       = formatDate(s.created_at);
+    const reportIcon    = s.has_report ? '<span class="session-has-report" title="Has final report">&#9679;</span> ' : '';
 
     item.innerHTML = `
       <div class="d-flex justify-content-between align-items-start mb-1">
         <span class="session-sector">${escapeHtml(s.sector || 'No sector')}</span>
-        <span class="badge bg-${statusVariant(s.approval_status)}" style="font-size:0.65rem">${s.approval_status}</span>
+        <span class="badge bg-${statusVariant(s.approval_status)}">${s.approval_status}</span>
       </div>
-      <div class="session-prompt">${reportIcon}${promptPreview || '<em class="text-secondary">No description</em>'}</div>
+      <div class="session-prompt">${reportIcon}${promptPreview || '<em style="color:var(--text-muted)">No description</em>'}</div>
       <div class="session-meta">${dateStr ? dateStr + ' &middot; ' : ''}Iter ${s.iteration}/${s.max_iterations}</div>
     `;
     item.addEventListener('click', () => loadSessionDetail(s.state_id));
@@ -489,13 +498,12 @@ function renderSessionList(sessions) {
 }
 
 async function loadSessionDetail(stateId) {
-  // Highlight selected item
   sessionsList.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
   const clicked = sessionsList.querySelector(`[data-state-id="${stateId}"]`);
   if (clicked) clicked.classList.add('active');
 
   try {
-    const res = await fetch(`/api/sessions/${stateId}`);
+    const res    = await fetch(`/api/sessions/${stateId}`);
     if (!res.ok) throw new Error('Session not found');
     const detail = await res.json();
 
@@ -508,10 +516,9 @@ async function loadSessionDetail(stateId) {
       showToast('This session has no final report yet.');
     }
 
-    // Pre-fill input form with session constraints
-    inpSector.value = detail.sector || '';
+    inpSector.value   = detail.sector || '';
     inpAudience.value = detail.audience || '';
-    inpPrompt.value = detail.prompt || '';
+    inpPrompt.value   = detail.prompt || '';
   } catch (e) {
     showToast('Could not load session: ' + e.message);
   }
@@ -520,10 +527,10 @@ async function loadSessionDetail(stateId) {
 tabSessionsBtn.addEventListener('click', loadSessions);
 btnRefreshSessions.addEventListener('click', loadSessions);
 
-// ── Restore state on page load ─────────────────────────────────────────────
+// ── Restore state on page load ─────────────────────────────────────────────────
 (async () => {
   try {
-    const res = await fetch('/api/status');
+    const res  = await fetch('/api/status');
     const data = await res.json();
 
     if (data.is_running && !data.is_interrupted) {
@@ -533,7 +540,7 @@ btnRefreshSessions.addEventListener('click', loadSessions);
       iterCounter.classList.remove('d-none');
       if (data.state) {
         iterCurrent.textContent = data.state.iteration || 0;
-        iterMax.textContent = data.state.max_iterations || 3;
+        iterMax.textContent     = data.state.max_iterations || 3;
       }
     } else if (data.is_interrupted) {
       setStatus('Awaiting Feedback', 'warning');
@@ -541,11 +548,11 @@ btnRefreshSessions.addEventListener('click', loadSessions);
       iterCounter.classList.remove('d-none');
       if (data.state) {
         iterCurrent.textContent = data.state.iteration || 0;
-        iterMax.textContent = data.state.max_iterations || 3;
+        iterMax.textContent     = data.state.max_iterations || 3;
       }
-      const intr = data.interrupt_info || {};
+      const intr             = data.interrupt_info || {};
       feedbackAssessment.textContent = intr.orchestrator_feedback || '(No specific feedback provided)';
-      feedbackText.value = '';
+      feedbackText.value     = '';
       showLeftPanel(feedbackPanel);
       document.getElementById('tab-input-btn').click();
     } else if (data.state && data.state.final_result) {

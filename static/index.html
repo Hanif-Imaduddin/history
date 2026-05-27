@@ -8,43 +8,45 @@
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body style="display:none">
+
+<!-- Auth guard -->
 <script>
-  (async () => {
-    try {
-      const r = await fetch('/auth/me');
-      const d = await r.json();
-      if (!d.authenticated) { window.location.href = '/login'; return; }
-      window._currentUser = d;
-      document.body.style.display = '';
-      document.getElementById('nav-username').textContent = d.username;
-      if (d.role === 'admin') {
-        document.getElementById('nav-admin-link').classList.remove('d-none');
-      }
-    } catch (_) { window.location.href = '/login'; }
-  })();
+(async () => {
+  try {
+    const r = await fetch('/auth/me');
+    const d = await r.json();
+    if (!d.authenticated) { window.location.href = '/login'; return; }
+    window._currentUser = d;
+    document.body.style.display = '';
+    document.getElementById('nav-username').textContent = d.username;
+    if (d.role === 'admin') document.getElementById('nav-admin-link').classList.remove('d-none');
+  } catch (_) { window.location.href = '/login'; }
+})();
 </script>
 
-<!-- Navbar -->
-<nav class="navbar navbar-expand-lg px-3">
-  <span class="navbar-brand fw-semibold">ClarioAI</span>
+<!-- ── Navbar ─────────────────────────────────────────────────────────────── -->
+<nav class="navbar navbar-expand-lg">
+  <span class="navbar-brand">ClarioAI</span>
   <div class="ms-auto d-flex align-items-center gap-3">
     <span id="status-badge" class="badge bg-secondary">Idle</span>
-    <span id="iter-counter" class="text-secondary small d-none">Iteration <span id="iter-current">0</span> / <span id="iter-max">3</span></span>
-    <button id="btn-new-session" class="btn btn-sm btn-outline-secondary" style="font-size:0.8rem">New Session</button>
-    <span id="nav-username" class="text-secondary small"></span>
-    <a id="nav-admin-link" href="/admin" class="btn btn-sm btn-outline-secondary d-none" style="font-size:0.8rem">Admin</a>
-    <button id="btn-logout" class="btn btn-sm btn-outline-secondary" style="font-size:0.8rem">Logout</button>
+    <span id="iter-counter" class="d-none" style="font-size:0.73rem;color:var(--text-muted)">
+      Iter <span id="iter-current">0</span>/<span id="iter-max">3</span>
+    </span>
+    <button id="btn-new-session" class="btn btn-sm btn-outline-secondary">New Session</button>
+    <span id="nav-username" style="font-size:0.75rem;color:var(--text-muted)"></span>
+    <a id="nav-admin-link" href="/admin" class="btn btn-sm btn-outline-secondary d-none">Admin</a>
+    <button id="btn-logout" class="btn btn-sm btn-outline-secondary">Logout</button>
   </div>
 </nav>
 
-<!-- Main layout -->
+<!-- ── Main Layout ────────────────────────────────────────────────────────── -->
 <div class="main-layout">
 
-  <!-- ── Left Panel ── -->
+  <!-- Left Panel -->
   <div class="left-panel">
-    <div class="card h-100 d-flex flex-column">
+    <div class="card h-100 d-flex flex-column" style="overflow:hidden">
 
-      <ul class="nav nav-tabs px-3 pt-2" id="left-tabs">
+      <ul class="nav nav-tabs" id="left-tabs" style="padding-top:0.1rem">
         <li class="nav-item">
           <button class="nav-link active" id="tab-input-btn" data-target="tab-input">Input</button>
         </li>
@@ -58,57 +60,58 @@
         <!-- Tab: Input -->
         <div id="tab-input">
 
-          <!-- Initial input form (shown when idle) -->
+          <!-- Initial form -->
           <div id="input-form">
             <div class="mb-3">
-              <label class="form-label small text-secondary">Sector & Domain</label>
+              <label class="form-label">Sector &amp; Domain</label>
               <input id="inp-sector" type="text" class="form-control form-control-sm"
-                     placeholder="e.g. F&B, EdTech, HealthTech" />
+                     placeholder="e.g. HealthTech, EdTech, F&amp;B" />
             </div>
             <div class="mb-3">
-              <label class="form-label small text-secondary">Target Audience</label>
+              <label class="form-label">Target Audience</label>
               <input id="inp-audience" type="text" class="form-control form-control-sm"
                      placeholder="e.g. College students, SMEs" />
             </div>
             <div class="mb-3">
-              <label class="form-label small text-secondary">Business Idea</label>
+              <label class="form-label">Business Idea</label>
               <textarea id="inp-prompt" class="form-control form-control-sm" rows="5"
                         placeholder="Describe your business idea in detail…"></textarea>
             </div>
             <div class="mb-3">
-              <label class="form-label small text-secondary">Max Iterations</label>
+              <label class="form-label">Max Iterations</label>
               <select id="inp-iterations" class="form-select form-select-sm">
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="3" selected>3</option>
+                <option value="1">1 — Quick pass</option>
+                <option value="2">2 — Balanced</option>
+                <option value="3" selected>3 — Thorough</option>
               </select>
             </div>
-            <button id="btn-start" class="btn btn-primary btn-sm w-100">Analyze</button>
+            <button id="btn-start" class="btn btn-primary btn-sm w-100">
+              Analyze Business Idea
+            </button>
           </div>
 
-          <!-- Feedback panel (shown when graph requests input mid-run) -->
+          <!-- Feedback panel -->
           <div id="feedback-panel" class="d-none">
-            <div class="alert alert-warning py-2 small mb-3">
-              <strong>Orchestrator needs your input</strong> before continuing to the next iteration.
+            <div class="alert alert-warning py-2 mb-3" style="font-size:0.79rem">
+              <strong>Orchestrator needs your guidance</strong> before the next iteration.
             </div>
             <div class="mb-3">
-              <label class="form-label small text-secondary">Orchestrator Assessment</label>
-              <div id="feedback-assessment" class="p-2 rounded small bg-white border"
-                   style="white-space: pre-wrap; max-height: 180px; overflow-y: auto;"></div>
+              <label class="form-label">Orchestrator Assessment</label>
+              <div id="feedback-assessment" class="feedback-assessment-box"></div>
             </div>
             <div class="mb-3">
-              <label class="form-label small text-secondary">Your Feedback</label>
+              <label class="form-label">Your Feedback</label>
               <textarea id="feedback-text" class="form-control form-control-sm" rows="4"
                         placeholder="Guide the agents for the next iteration…"></textarea>
             </div>
             <button id="btn-submit-feedback" class="btn btn-primary btn-sm w-100">Continue Analysis</button>
           </div>
 
-          <!-- Running state (shown while graph is running without needing feedback) -->
-          <div id="running-indicator" class="d-none text-center py-4">
-            <div class="spinner-border text-primary mb-3" role="status"></div>
-            <p class="small text-secondary mb-0">Agents are working…</p>
-            <p class="small text-secondary" id="running-current-agent"></p>
+          <!-- Running state -->
+          <div id="running-indicator" class="d-none">
+            <div class="clario-spinner"></div>
+            <p style="font-size:0.8rem;color:var(--text-secondary);margin:0">Agents are working…</p>
+            <p id="running-current-agent" style="font-size:0.73rem;color:var(--text-muted);margin-top:0.3rem;min-height:1em"></p>
           </div>
 
         </div><!-- /tab-input -->
@@ -116,12 +119,11 @@
         <!-- Tab: Final Review -->
         <div id="tab-review" class="d-none">
           <div class="mb-3">
-            <label class="form-label small text-secondary">Orchestrator Verdict</label>
-            <div id="review-verdict" class="p-2 rounded small bg-white border"
-                 style="white-space: pre-wrap; max-height: 200px; overflow-y: auto; color: var(--text-secondary);"></div>
+            <label class="form-label">Orchestrator Verdict</label>
+            <div id="review-verdict"></div>
           </div>
           <div class="mb-3">
-            <label class="form-label small text-secondary">Your Final Feedback (optional)</label>
+            <label class="form-label">Your Final Feedback <span style="color:var(--text-muted)">(optional)</span></label>
             <textarea id="review-feedback" class="form-control form-control-sm" rows="4"
                       placeholder="Any additional comments on the report…"></textarea>
           </div>
@@ -129,17 +131,50 @@
             <button id="btn-accept" class="btn btn-success btn-sm">Accept Report</button>
             <button id="btn-revise" class="btn btn-outline-primary btn-sm">Request Full Revision</button>
           </div>
-        </div><!-- /tab-review -->
+        </div>
 
       </div>
     </div>
   </div><!-- /left-panel -->
 
-  <!-- ── Right Panel ── -->
+  <!-- Right Panel -->
   <div class="right-panel">
-    <div class="card h-100 d-flex flex-column">
+    <div class="card h-100 d-flex flex-column" style="overflow:hidden">
 
-      <ul class="nav nav-tabs px-3 pt-2" id="right-tabs">
+      <!-- Agent Pipeline Bar -->
+      <div class="pipeline-bar" id="pipeline-bar">
+        <div class="pipe-node" id="pipe-lead_orchestrator" data-agent="orchestrator">
+          <span class="pipe-dot"></span>
+          <span>Orchestrator</span>
+        </div>
+        <span class="pipe-line"></span>
+        <div class="pipe-node" id="pipe-market_scout" data-agent="market">
+          <span class="pipe-dot"></span>
+          <span>Market Scout</span>
+        </div>
+        <span class="pipe-line"></span>
+        <div class="pipe-node" id="pipe-strategic_architect" data-agent="strategic">
+          <span class="pipe-dot"></span>
+          <span>Strategic</span>
+        </div>
+        <span class="pipe-line"></span>
+        <div class="pipe-node" id="pipe-financial_analyst" data-agent="financial">
+          <span class="pipe-dot"></span>
+          <span>Financial</span>
+        </div>
+        <span class="pipe-line"></span>
+        <div class="pipe-node" id="pipe-ethics_agent" data-agent="ethics">
+          <span class="pipe-dot"></span>
+          <span>Ethics</span>
+        </div>
+        <span class="pipe-line"></span>
+        <div class="pipe-node" id="pipe-final_summary" data-agent="final">
+          <span class="pipe-dot"></span>
+          <span>Final Report</span>
+        </div>
+      </div>
+
+      <ul class="nav nav-tabs" id="right-tabs" style="padding-top:0.1rem">
         <li class="nav-item">
           <button class="nav-link active" id="tab-activity-btn" data-target="tab-activity">Agent Activity</button>
         </li>
@@ -156,13 +191,15 @@
         <!-- Tab: Agent Activity -->
         <div id="tab-activity">
           <div id="activity-log">
-            <p class="text-secondary small text-center mt-4">No activity yet. Start an analysis to see agent logs.</p>
+            <p style="color:var(--text-muted);font-size:0.8rem;text-align:center;margin-top:2rem">
+              No activity yet. Start an analysis to see agent logs.
+            </p>
           </div>
         </div>
 
         <!-- Tab: Final Report -->
         <div id="tab-report" class="d-none">
-          <div id="report-placeholder" class="text-secondary small text-center mt-4">
+          <div id="report-placeholder" style="color:var(--text-muted);font-size:0.8rem;text-align:center;margin-top:2rem">
             Final report will appear here once analysis is complete.
           </div>
           <div id="report-content" class="d-none markdown-body"></div>
@@ -171,11 +208,12 @@
         <!-- Tab: Sessions -->
         <div id="tab-sessions" class="d-none">
           <div class="d-flex justify-content-between align-items-center mb-3">
-            <span class="small text-secondary fw-medium">Recent Sessions</span>
-            <button id="btn-refresh-sessions" class="btn btn-sm btn-outline-secondary" style="font-size:0.75rem;padding:2px 10px">Refresh</button>
+            <span style="font-size:0.75rem;font-weight:500;color:var(--text-secondary)">Recent Sessions</span>
+            <button id="btn-refresh-sessions" class="btn btn-sm btn-outline-secondary"
+                    style="font-size:0.71rem;padding:2px 10px">Refresh</button>
           </div>
           <div id="sessions-list">
-            <p class="text-secondary small text-center mt-4">Loading sessions…</p>
+            <p style="color:var(--text-muted);font-size:0.8rem;text-align:center;margin-top:1.5rem">Loading sessions…</p>
           </div>
         </div>
 
@@ -185,9 +223,9 @@
 
 </div><!-- /main-layout -->
 
-<!-- Toast container -->
-<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 9999">
-  <div id="toast" class="toast align-items-center text-bg-danger border-0" role="alert">
+<!-- Toast -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999">
+  <div id="toast" class="toast align-items-center border-0" role="alert">
     <div class="d-flex">
       <div class="toast-body" id="toast-body">Error</div>
       <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
