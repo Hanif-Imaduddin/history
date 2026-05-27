@@ -20,6 +20,7 @@ _AGENT_LABELS = {
     "strategic_architect": "Strategic Architect",
     "financial_analyst": "Financial Analyst",
     "ethics_agent": "Ethics Guardian",
+    "validation_layer": "Validation Layer",
     "lead_orchestrator": "Lead Orchestrator",
 }
 
@@ -493,10 +494,52 @@ def extract_json(text: str) -> dict[str, Any]:
 
 
 def format_constraints(bc) -> str:
+    """Format BusinessConstraints ke string untuk prompt agent.
+    
+    Compatible dengan schema lama (sector_and_domain, audience, initial_prompt)
+    dan schema baru (sector, target_audience, business_idea, + fields tambahan).
+    """
     if bc is None:
         return "No constraints provided."
-    return (
-        f"Sector/Domain: {bc.sector_and_domain}\n"
-        f"Target Audience: {bc.audience}\n"
-        f"Business Idea: {bc.initial_prompt}"
-    )
+
+    lines = []
+
+    # ── Deteksi schema baru vs lama ──
+    # Schema baru punya atribut 'sector', schema lama punya 'sector_and_domain'
+    is_new_schema = hasattr(bc, "sector") and not hasattr(bc, "sector_and_domain")
+
+    if is_new_schema:
+        # ── Schema baru (BusinessConstraints refactored) ──
+        lines.append(f"Sector: {bc.sector}")
+        lines.append(f"Target Audience: {bc.target_audience}")
+        lines.append(f"Business Idea: {bc.business_idea}")
+        lines.append(f"Location: {bc.location}")
+        lines.append(f"Budget Range: {bc.budget_range}")
+        lines.append(f"Business Model: {bc.business_model}")
+        lines.append(f"Experience Level: {bc.experience_level}")
+        lines.append(f"Risk Tolerance: {bc.risk_tolerance}")
+    else:
+        # ── Schema lama (backward compatible) ──
+        # Gunakan getattr dengan default agar tidak AttributeError
+        sector = getattr(bc, "sector_and_domain", getattr(bc, "sector", "-"))
+        audience = getattr(bc, "audience", getattr(bc, "target_audience", "-"))
+        idea = getattr(bc, "initial_prompt", getattr(bc, "business_idea", "-"))
+
+        lines.append(f"Sector/Domain: {sector}")
+        lines.append(f"Target Audience: {audience}")
+        lines.append(f"Business Idea: {idea}")
+
+        # Tambahkan field lain jika ada
+        if hasattr(bc, "location"):
+            lines.append(f"Location: {bc.location}")
+        if hasattr(bc, "budget_range"):
+            lines.append(f"Budget Range: {bc.budget_range}")
+        if hasattr(bc, "business_model"):
+            lines.append(f"Business Model: {bc.business_model}")
+        if hasattr(bc, "experience_level"):
+            lines.append(f"Experience Level: {bc.experience_level}")
+        if hasattr(bc, "risk_tolerance"):
+            lines.append(f"Risk Tolerance: {bc.risk_tolerance}")
+
+    return "\n".join(lines)
+

@@ -11,6 +11,7 @@ from nodes.financial_analyst import financial_analyst_node
 from nodes.lead_orchestrator import final_summary_node, lead_orchestrator_node
 from nodes.market_scout import market_scout_node
 from nodes.strategic_architect import strategic_architect_node
+from nodes.validation_layer import validation_layer_node
 from states.schema import EBPState
 
 checkpointer = MemorySaver()
@@ -37,6 +38,7 @@ def build_graph() -> StateGraph:
     workflow.add_node("strategic_architect", strategic_architect_node)
     workflow.add_node("financial_analyst", financial_analyst_node)
     workflow.add_node("ethics_agent", ethics_agent_node)
+    workflow.add_node("validation_layer", validation_layer_node))
     workflow.add_node("final_summary", final_summary_node)
 
     # Entry point
@@ -58,7 +60,9 @@ def build_graph() -> StateGraph:
     workflow.add_edge("financial_analyst", "ethics_agent")
 
     # After ethics, return to orchestrator for evaluation
-    workflow.add_edge("ethics_agent", "lead_orchestrator")
+    workflow.add_edge("ethics_agent", "validation_layer")
+    workflow.add_edge("validation_layer", "lead_orchestrator")
+
 
     return workflow.compile(checkpointer=checkpointer)
 

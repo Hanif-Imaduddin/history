@@ -1,5 +1,13 @@
-"""Market Scout Agent (Enterprise Model) — Memvalidasi kelayakan pasar menggunakan
-multi-source retrieval, analisis sentimen komplain kompetitor, dan pemodelan TAM-SAM-SOM berbasis data riil.
+"""
+Market Scout Agent (Refactored) — Structured Evaluator
+
+Perubahan dari versi lama:
+- Output ke MarketScoutReport typed dataclass, bukan text blob
+- TAM-SAM-SOM tetap ada tapi dengan metodologi eksplisit
+- demand_score, competition_level, opportunity_score sebagai angka terukur
+- Competitor insights structured (bukan narasi panjang)
+- customer_pain_points sebagai List[str], bukan paragraf
+- Max search calls dikurangi (efisiensi latency)
 """
 from __future__ import annotations
 
@@ -11,158 +19,160 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from functions.agent_utils import extract_json, format_constraints, run_planned_search_loop
 from functions.llm import get_llm
-from states.schema import EBPState, MarketScoutReport
+from states.schema import (
+    CompetitorInsight,
+    EBPState,
+    MarketScoutReport,
+)
 from tools.internet_search import internet_search
 
-logger = logging.getLogger("clario.market_scout_enterprise")
+logger = logging.getLogger("clario.market_scout")
 
-_ENTERPRISE_SYSTEM_PROMPT = """You are the Senior Market Scout Agent in an enterprise business planning system.
-Your mission is to rigorously validate whether a target market is viable to enter by transforming bulk search data into highly actionable market intelligence.
+# ─────────────────────────────────────────────
+# SYSTEM PROMPT
+# ─────────────────────────────────────────────
 
-Your analysis must be synthesized entirely in Bahasa Indonesia and formatted into a structured JSON response.
+_SYSTEM_PROMPT = """You are the Market Scout Agent in a multi-agent business planning system.
+Your job is to evaluate market viability and return STRUCTURED data — not essays.
 
-CRITICAL REQUIREMENTS:
-1. Multi-Source Integration: Synthesize ground truths from Google Search, Google Trends signals, industry news, and competitor reviews.
-2. Competitor Sentiment Extraction: Drill down into public reviews (Google Maps, marketplace, public forums) to extract the most common customer complaints (e.g., slow delivery, poor packaging, high prices) to identify clear, unmet market opportunities.
-3. Grounded TAM-SAM-SOM Sederhana: Calculate market sizes using a logical methodology based on retrieved factual data (Target Population Estimate x Estimated Average Annual Spending). Do NOT hallucinate baseline population numbers.
+CRITICAL: Output ONLY valid JSON. No prose, no markdown fences, no preamble.
 
-OUTPUT FORMAT — respond with ONLY valid JSON when ready, no other text or code fences:
+Your analysis covers:
+1. Demand & competition scoring (integer 1-10, not words)
+2. Top 3-5 customer pain points (from real competitor reviews)
+3. Max 3 validated opportunities (specific, not generic)
+4. TAM-SAM-SOM with explicit methodology (population × spending estimate)
+5. Max 3 competitor insights with concrete weaknesses
+
+SCORING GUIDE:
+- demand_score 1-3: Niche/declining market
+- demand_score 4-6: Moderate, stable demand  
+- demand_score 7-10: High/growing demand
+- competition_level: "low" (<3 established players), "medium" (3-10), "high" (>10 or 1-2 dominant)
+- opportunity_score: composite of demand_score - competition penalty + pain point severity
+
+OUTPUT FORMAT — ONLY valid JSON:
 {
-  "ideas": [
-    "Peluang bisnis spesifik 1 dengan bukti validasi pasar dan solusi terhadap kelemahan kompetitor",
-    "Peluang bisnis spesifik 2 dengan bukti validasi pasar dan solusi terhadap kelemahan kompetitor"
+  "demand_score": 7,
+  "competition_level": "medium",
+  "opportunity_score": 6,
+  "market_trend_summary": "Maksimal 2 kalimat ringkas tren pasar",
+  "customer_pain_points": [
+    "Pain point spesifik 1 berdasarkan keluhan pelanggan nyata",
+    "Pain point spesifik 2",
+    "Pain point spesifik 3"
   ],
-  "market_trend_summary": "Rangkuman tren pasar makro, momentum pertumbuhan, dan sinyal Google Trends",
-  "competitor_snapshot": "Pemetaan lanskap kompetitor utama dan posisi operasional mereka di Indonesia",
-  "common_customer_complaints": [
-    "Keluhan pelanggan utama 1 terhadap kompetitor yang ada di pasar",
-    "Keluhan pelanggan utama 2 terhadap kompetitor yang ada di pasar",
-    "Keluhan pelanggan utama 3 terhadap kompetitor yang ada di pasar"
+  "competitors": [
+    {
+      "name": "Nama Kompetitor A",
+      "strengths": ["Kekuatan 1", "Kekuatan 2"],
+      "weaknesses": ["Kelemahan nyata 1 dari ulasan pelanggan", "Kelemahan 2"],
+      "market_position": "Pemimpin pasar lokal / challenger / niche"
+    }
   ],
-  "tam_sam_som_analysis": {
-    "methodology": "Penjelasan sumber data populasi target dan estimasi rata-rata spending belanja per tahun",
-    "tam": "Total Addressable Market dalam mata uang Rupiah (Rp)",
-    "sam": "Serviceable Addressable Market dalam mata uang Rupiah (Rp)",
-    "som": "Serviceable Obtainable Market yang rasional dijangkau dalam waktu dekat dalam Rupiah (Rp)"
-  },
-  "agent_explanation": "Analisis naratif komprehensif dalam Bahasa Indonesia yang mengintegrasikan seluruh temuan di atas untuk membuktikan kelayakan komersial pasar.",
-  "sources": [
-    "Cantumkan URL spesifik dari berita, Google Trends, atau basis data populasi yang Anda temukan saat melakukan search",
-    "Contoh: https://nasional.kontan.co.id/news/...",
-    "Contoh: Google Trends Keyword X (Indonesia, Past 12 Months)"
-  ]
+  "tam_estimate": "Rp X Triliun/tahun",
+  "sam_estimate": "Rp X Miliar/tahun",
+  "som_estimate": "Rp X Miliar/tahun (target 12 bulan pertama)",
+  "market_sizing_methodology": "Populasi target: X juta orang × rata-rata spending Rp Y/bulan = TAM",
+  "validated_opportunities": [
+    "Peluang 1: spesifik dengan bukti dari pain point atau gap kompetitor",
+    "Peluang 2: spesifik",
+    "Peluang 3: spesifik"
+  ],
+  "source_links": ["https://...", "https://..."],
+  "confidence_score": 7
 }"""
 
-_ENTERPRISE_SEARCH_TOPICS = [
-    "tren industri perkembangan pasar dan sinyal google trends terbaru sektor target di indonesia",
-    "kompetitor utama bisnis serupa di indonesia beserta ulasan negatif review pelanggan",
-    "keluhan konsumen customer complaints paling umum di marketplace dan google maps industri target",
-    "data demografi populasi target serta rata rata pengeluaran spending bulanan di indonesia untuk sektor ini"
+_SEARCH_TOPICS = [
+    "tren pasar dan permintaan konsumen sektor target indonesia terbaru",
+    "kompetitor utama dan keluhan pelanggan ulasan negatif sektor target indonesia",
+    "data populasi dan spending konsumen target demografi indonesia",
 ]
 
 
+# ─────────────────────────────────────────────
+# NODE
+# ─────────────────────────────────────────────
+
 def market_scout_node(state: EBPState) -> dict[str, Any]:
-    """LangGraph node for the Enterprise Market Scout Agent."""
+    """LangGraph node — Market Scout Agent."""
     t_start = time.perf_counter()
-    logger.debug("============================================================")
-    logger.debug("-> Enterprise Market Scout Agent Dimulai")
-    bc = state.get("bussiness_constraints")
+    logger.debug("=" * 60)
+    logger.debug("→ Market Scout Agent dimulai")
+
+    bc = state.get("business_constraints")
     feedback = state.get("orchestrator_feedback")
     user_fb = state.get("user_feedback")
 
     context_lines = [
-        "=== ENTERPRISE MISSION ===",
-        "Validasi kelayakan masuk pasar, petakan kegagalan layanan kompetitor, dan kalkulasi TAM-SAM-SOM.",
-        "\n=== BUSINESS CONSTRAINTS ===",
+        "=== BUSINESS CONSTRAINTS ===",
         format_constraints(bc),
     ]
     if feedback:
-        context_lines += ["\n=== ORCHESTRATOR FEEDBACK ===", feedback]
+        context_lines += ["\n=== ORCHESTRATOR FEEDBACK (iteration sebelumnya) ===", feedback]
     if user_fb:
-        context_lines += ["\n=== ENTREPRENEUR FEEDBACK ===", user_fb]
-
+        context_lines += ["\n=== FEEDBACK ENTREPRENEUR ===", user_fb]
     context_lines.append(
-        "\nJalankan riset multi-source terencana. Setelah data terkumpul, formulasikan laporan dalam JSON Bahasa Indonesia."
+        "\nEvaluasi kelayakan pasar. Return ONLY structured JSON sesuai format."
     )
-    user_message = "\n".join(context_lines)
 
-    # Temperature 0.4 untuk keseimbangan antara analisis taktis dan akurasi ekstraksi data angka
-    llm = get_llm(temperature=0.4)
+    llm = get_llm(temperature=0.3)
     llm_with_tools = llm.bind_tools([internet_search])
 
     new_msgs, final_response = run_planned_search_loop(
         llm=llm,
         llm_with_tools=llm_with_tools,
         messages=[
-            SystemMessage(content=_ENTERPRISE_SYSTEM_PROMPT),
-            HumanMessage(content=user_message),
+            SystemMessage(content=_SYSTEM_PROMPT),
+            HumanMessage(content="\n".join(context_lines)),
         ],
         tools=[internet_search],
-        planning_topics=_ENTERPRISE_SEARCH_TOPICS,
-        max_followup_rounds=2,
-        agent_name="enterprise_market_scout",
-        max_search_calls=6,
+        planning_topics=_SEARCH_TOPICS,
+        max_followup_rounds=1,      # Dikurangi dari 2 → latency lebih cepat
+        agent_name="market_scout",
+        max_search_calls=4,         # Dikurangi dari 6
     )
 
-    # 1. Ekstrak JSON hasil respon akhir
     parsed = extract_json(final_response.content)
-    raw_ideas = parsed.get("ideas", [])
-    trend = parsed.get("market_trend_summary", "")
-    competitors = parsed.get("competitor_snapshot", "")
-    complaints = parsed.get("common_customer_complaints", [])
-    sizing = parsed.get("tam_sam_som_analysis", {})
-    explanation = parsed.get("agent_explanation", final_response.content)
-    
-    # 2. Ambil Sources yang ditulis oleh LLM
-    extracted_sources = parsed.get("sources", [])
 
-    # 3. BACKUP PLAN: Jika LLM tidak menuliskan source di JSON, 
-    # kita scan secara manual dari hasil pencarian asli di `new_msgs`
-    if not extracted_sources:
-        for msg in new_msgs:
-            # Cari pesan dari ToolMessage yang berisi raw data dari internet_search
-            if msg.type == "tool" and hasattr(msg, "content"):
-                # Sederhananya, cari string berupa tautan/URL di dalam konten pencarian
-                import re
-                urls = re.findall(r'(https?://[^\s\"\'\>]+)', msg.content)
-                for url in urls:
-                    # Bersihkan URL dan batasi agar unik (misal ambil domain/link utama saja)
-                    clean_url = url.split(')')[0].split(']')[0] # bersihkan markdown artifact
-                    if clean_url not in extracted_sources and len(extracted_sources) < 5:
-                        extracted_sources.append(clean_url)
+    # ── Parse competitors ──
+    raw_competitors = parsed.get("competitors", [])
+    competitors = []
+    for c in raw_competitors:
+        if isinstance(c, dict):
+            competitors.append(CompetitorInsight(
+                name=c.get("name", "Unknown"),
+                strengths=c.get("strengths", []),
+                weaknesses=c.get("weaknesses", []),
+                market_position=c.get("market_position"),
+            ))
 
-    # Format penjelasan teks
-    formatted_explanation = (
-        f"{explanation}\n\n"
-        f"### 1. RANGKUMAN TREN PASAR & GOOGLE TRENDS\n{trend}\n\n"
-        f"### 2. SNAPSHOT KOMPETITOR & SENTIMEN NEGATIF\n"
-        f"- Lanskap Kompetisi: {competitors}\n"
-        f"- Komplain Utama Konsumen: {', '.join(complaints)}\n\n"
-        f"### 3. ESTIMASI UKURAN PASAR (TAM-SAM-SOM)\n"
-        f"- Metodologi Sizing: {sizing.get('methodology', '-')}\n"
-        f"- TAM: {sizing.get('tam', '-')}\n"
-        f"- SAM: {sizing.get('sam', '-')}\n"
-        f"- SOM: {sizing.get('som', '-')}"
-    )
-
-    if isinstance(raw_ideas, list):
-        ideas = [str(i) for i in raw_ideas if i]
-    else:
-        ideas = [str(raw_ideas)]
-
-    if not ideas:
-        ideas = ["Gagal mengidentifikasi peluang spesifik yang tervalidasi dari hasil pencarian."]
-
-    # 4. Masukkan array sources ke dalam objek laporan akhir
     report = MarketScoutReport(
-        ideas=ideas, 
-        agent_explanation=formatted_explanation,
-        sources=extracted_sources  # <--- Sumber tersimpan di sini!
+        demand_score=int(parsed.get("demand_score", 5)),
+        competition_level=parsed.get("competition_level", "medium"),
+        opportunity_score=int(parsed.get("opportunity_score", 5)),
+        market_trend_summary=parsed.get("market_trend_summary", ""),
+        customer_pain_points=parsed.get("customer_pain_points", []),
+        competitors=competitors,
+        tam_estimate=parsed.get("tam_estimate", "-"),
+        sam_estimate=parsed.get("sam_estimate", "-"),
+        som_estimate=parsed.get("som_estimate", "-"),
+        market_sizing_methodology=parsed.get("market_sizing_methodology", ""),
+        validated_opportunities=parsed.get("validated_opportunities", []),
+        source_links=parsed.get("source_links", []),
+        confidence_score=int(parsed.get("confidence_score", 5)),
     )
 
-    logger.debug(f"Market Scout Agent selesai dengan {len(extracted_sources)} sitasi valid.")
-    logger.debug("============================================================")
+    logger.debug(
+        f"   demand_score={report.demand_score} | "
+        f"competition={report.competition_level} | "
+        f"opportunity={report.opportunity_score} | "
+        f"confidence={report.confidence_score}"
+    )
+    logger.debug(f"✓ Market Scout selesai dalam {time.perf_counter() - t_start:.2f}s")
+    logger.debug("=" * 60)
+
     return {
-        "market_scout_report": report,
+        "market_report": report,
         "messages": new_msgs,
     }
