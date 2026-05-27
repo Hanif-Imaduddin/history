@@ -19,6 +19,7 @@ class MarketScoutReport:
     """Hasil dari market scout report yang dihasilkan oleh agent"""
     ideas: List[str]
     agent_explanation: str
+    sources: list[str]
 
 
 @dataclass
